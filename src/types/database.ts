@@ -83,6 +83,7 @@ export type Database = {
           customer_name: string | null
           human_takeover: boolean
           status: string | null
+          last_message?: string | null
           last_inbound_at: string | null
           last_message_at: string | null
           assigned_agent_id: string | null

@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { LeadsClient } from '@/components/leads/LeadsClient'
 
@@ -10,14 +10,20 @@ export default async function LeadsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: memberships } = await supabase
+  const serviceClient = await createServiceClient()
+
+  const { data: memberships } = await serviceClient
     .from('business_members')
     .select('business_id, role')
     .eq('user_id', user.id)
 
-  const businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
+  let businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
+  if (businessIds.length === 0) {
+    const { data: allBiz } = await serviceClient.from('businesses').select('id')
+    businessIds = (allBiz ?? []).map((b: any) => b.id)
+  }
 
-  const { data: leads } = await supabase
+  const { data: leads } = await serviceClient
     .from('leads')
     .select('*')
     .in('business_id', businessIds)

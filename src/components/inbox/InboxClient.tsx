@@ -18,6 +18,7 @@ type Conversation = {
   customer_name: string | null
   human_takeover: boolean
   status: string | null
+  last_message?: string | null
   last_message_at: string | null
   unread_count: number
   tags: string[]
@@ -42,18 +43,20 @@ type Filter = typeof FILTERS[number]
 
 export function InboxClient({
   initialConversations,
+  initialMessages = [],
   businessIds,
   userId,
   userRole,
 }: {
   initialConversations: Conversation[]
+  initialMessages?: Message[]
   businessIds: string[]
   userId: string
   userRole: string
 }) {
   const [convs, setConvs] = useState<Conversation[]>(initialConversations)
-  const [selected, setSelected] = useState<Conversation | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
+  const [selected, setSelected] = useState<Conversation | null>(initialConversations[0] || null)
+  const [messages, setMessages] = useState<Message[]>(initialMessages ?? [])
   const [msgLoading, setMsgLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
@@ -65,16 +68,54 @@ export function InboxClient({
   const bottomRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
+  const loadMessages = useCallback(async (conv: Conversation) => {
+    if (!conv?.session_id) return
+    setMsgLoading(true)
+    try {
+      const res = await fetch(`/api/messages?session_id=${encodeURIComponent(conv.session_id)}`)
+      if (res.ok) {
+        const json = await res.json()
+        setMessages(json.messages ?? [])
+      } else {
+        const { data } = await supabase
+          .from('wa_messages')
+          .select('*')
+          .eq('session_id', conv.session_id)
+          .order('created_at', { ascending: true })
+          .limit(100)
+        setMessages(data ?? [])
+      }
+    } catch {
+      // ignore
+    } finally {
+      setMsgLoading(false)
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 50)
+    }
+
+    // Mark as read
+    if (conv.unread_count > 0) {
+      await supabase
+        .from('conversations')
+        .update({ unread_count: 0 })
+        .eq('session_id', conv.session_id)
+    }
+  }, [supabase])
+
+  // Initial load for first conversation if initialMessages wasn't passed or needs refresh
+  useEffect(() => {
+    if (initialConversations[0] && initialMessages.length === 0) {
+      loadMessages(initialConversations[0])
+    }
+  }, [initialConversations, initialMessages.length, loadMessages])
+
   // Realtime subscription
   useEffect(() => {
-    if (!businessIds.length) return
     const channel = supabase
       .channel('inbox-realtime')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'conversations',
-        filter: `business_id=in.(${businessIds.join(',')})`,
       }, (payload: any) => {
         setConvs(prev => {
           const idx = prev.findIndex(c => c.session_id === payload.new?.session_id)
@@ -93,38 +134,61 @@ export function InboxClient({
         event: 'INSERT',
         schema: 'public',
         table: 'wa_messages',
-        filter: `business_id=in.(${businessIds.join(',')})`,
       }, (payload: any) => {
         if (selected && payload.new?.session_id === selected.session_id) {
-          setMessages(prev => [...prev, payload.new])
+          setMessages(prev => {
+            if (prev.some(m => m.id === payload.new?.id || (m.wa_message_id && m.wa_message_id === payload.new?.wa_message_id))) return prev
+            return [...prev, payload.new]
+          })
           setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
         }
       })
       .subscribe()
+
     return () => { supabase.removeChannel(channel) }
-  }, [businessIds, selected?.session_id])
+  }, [selected?.session_id, supabase])
 
-  const loadMessages = useCallback(async (conv: Conversation) => {
-    setMsgLoading(true)
-    const { data } = await supabase
-      .from('wa_messages')
-      .select('*')
-      .eq('session_id', conv.session_id)
-      .in('business_id', businessIds)
-      .order('created_at', { ascending: true })
-      .limit(100)
-    setMessages(data ?? [])
-    setMsgLoading(false)
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 50)
+  // Periodic fallback sync (every 3.5s) to guarantee real-time updates
+  useEffect(() => {
+    if (!selected?.session_id) return
+    const interval = setInterval(async () => {
+      // 1. Fetch latest messages for active conversation
+      try {
+        const res = await fetch(`/api/messages?session_id=${encodeURIComponent(selected.session_id)}`)
+        if (res.ok) {
+          const json = await res.json()
+          const latestMsgs = json.messages ?? []
+          if (latestMsgs.length > 0) {
+            setMessages(prev => {
+              if (latestMsgs.length !== prev.length || latestMsgs[latestMsgs.length - 1]?.id !== prev[prev.length - 1]?.id) {
+                setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+                return latestMsgs
+              }
+              return prev
+            })
+          }
+        }
+      } catch {
+        // ignore
+      }
 
-    // Mark as read
-    if (conv.unread_count > 0) {
-      await supabase
-        .from('conversations')
-        .update({ unread_count: 0 })
-        .eq('session_id', conv.session_id)
-    }
-  }, [businessIds])
+      // 2. Fetch latest conversation states
+      if (businessIds.length > 0) {
+        const { data: latestConvs } = await supabase
+          .from('conversations')
+          .select('*')
+          .in('business_id', businessIds)
+          .order('last_message_at', { ascending: false })
+          .limit(50)
+
+        if (latestConvs && latestConvs.length > 0) {
+          setConvs(latestConvs)
+        }
+      }
+    }, 3500)
+
+    return () => clearInterval(interval)
+  }, [selected?.session_id, businessIds, supabase])
 
   const selectConv = (conv: Conversation) => {
     setSelected(conv)
@@ -155,6 +219,9 @@ export function InboxClient({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Send failed')
       toast.success('Message sent')
+      if (selected) {
+        loadMessages(selected)
+      }
     } catch (err: any) {
       toast.error(err.message)
       setReplyText(text) // restore on failure
@@ -166,22 +233,26 @@ export function InboxClient({
     if (!selected || aiToggling) return
     setAiToggling(true)
     const newState = !selected.human_takeover
-    const { error } = await supabase
-      .from('conversations')
-      .update({
-        human_takeover: newState,
-        status: newState ? 'human' : 'bot',
+    try {
+      const res = await fetch('/api/conversations/toggle-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: selected.session_id,
+          human_takeover: newState,
+        }),
       })
-      .eq('session_id', selected.session_id)
-
-    if (error) {
-      toast.error('Failed to update AI status')
-    } else {
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update AI status')
       const label = newState ? 'AI paused — human takeover active' : 'AI resumed'
       toast.success(label)
-      setSelected(prev => prev ? { ...prev, human_takeover: newState } : prev)
+      setSelected(prev => prev ? { ...prev, human_takeover: newState, status: 'open' } : prev)
+      setConvs(prev => prev.map(c => c.session_id === selected.session_id ? { ...c, human_takeover: newState, status: 'open' } : c))
+    } catch (err: any) {
+      toast.error('Failed to update AI status: ' + err.message)
+    } finally {
+      setAiToggling(false)
     }
-    setAiToggling(false)
   }
 
   async function saveNote() {
@@ -207,7 +278,7 @@ export function InboxClient({
       filter === 'unread' ? c.unread_count > 0 :
       filter === 'human'  ? c.human_takeover :
       filter === 'ai'     ? !c.human_takeover :
-      filter === 'open'   ? c.status === 'bot' || c.status === 'human' :
+      filter === 'open'   ? c.status === 'open' || c.status === 'bot' || c.status === 'human' :
       filter === 'closed' ? c.status === 'closed' : true
     return matchSearch && matchFilter
   })
@@ -295,6 +366,11 @@ export function InboxClient({
                         : <span className="badge-green text-[9px] px-1 py-0">AI</span>
                       }
                     </div>
+                    {conv.last_message && (
+                      <p className="text-[11px] text-slate-400 truncate mt-1">
+                        {conv.last_message}
+                      </p>
+                    )}
                     {conv.last_message_at && (
                       <div className="text-[10px] text-slate-600 mt-0.5">
                         {formatDistanceToNow(new Date(conv.last_message_at), { addSuffix: true })}

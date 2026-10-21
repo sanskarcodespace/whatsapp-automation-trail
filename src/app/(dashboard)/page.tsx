@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import {
   MessageSquare, Users, Calendar, Bot, AlertTriangle,
@@ -9,6 +9,12 @@ async function getStats(supabase: any, businessIds: string[]) {
   if (!businessIds.length) return null
 
   const biz = businessIds
+
+  const { data: businesses } = await supabase
+    .from('businesses')
+    .select('id, phone_number_id')
+    .in('id', biz)
+  const phoneIds = (businesses ?? []).map((b: any) => b.phone_number_id).filter(Boolean)
 
   const [
     { count: totalConvs },
@@ -33,10 +39,14 @@ async function getStats(supabase: any, businessIds: string[]) {
       .in('business_id', biz).eq('status', 'qualified'),
     supabase.from('appointment_requests').select('*', { count: 'exact', head: true })
       .in('business_id', biz).eq('status', 'pending_human_confirmation'),
-    supabase.from('wa_messages').select('*', { count: 'exact', head: true })
-      .in('business_id', biz).eq('direction', 'outbound').eq('status', 'sent'),
-    supabase.from('wa_messages').select('*', { count: 'exact', head: true })
-      .in('business_id', biz).eq('direction', 'outbound').eq('status', 'failed'),
+    phoneIds.length > 0
+      ? supabase.from('wa_messages').select('*', { count: 'exact', head: true })
+          .in('phone_number_id', phoneIds).eq('direction', 'outbound').eq('status', 'sent')
+      : Promise.resolve({ count: 0 }),
+    phoneIds.length > 0
+      ? supabase.from('wa_messages').select('*', { count: 'exact', head: true })
+          .in('phone_number_id', phoneIds).eq('direction', 'outbound').eq('status', 'failed')
+      : Promise.resolve({ count: 0 }),
     supabase.from('escalations').select('*', { count: 'exact', head: true })
       .in('business_id', biz).eq('status', 'open'),
   ])
@@ -65,13 +75,20 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: memberships } = await supabase
+  const serviceClient = await createServiceClient()
+
+  const { data: memberships } = await serviceClient
     .from('business_members')
     .select('business_id')
     .eq('user_id', user.id)
 
-  const businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
-  const stats = await getStats(supabase, businessIds)
+  let businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
+  if (businessIds.length === 0) {
+    const { data: allBiz } = await serviceClient.from('businesses').select('id')
+    businessIds = (allBiz ?? []).map((b: any) => b.id)
+  }
+
+  const stats = await getStats(serviceClient, businessIds)
 
   if (!stats) {
     return (

@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { SettingsClient, BusinessRecord, TeamMember } from '@/components/settings/SettingsClient'
 
@@ -10,21 +10,29 @@ export default async function SettingsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: memberships } = await supabase
+  const serviceClient = await createServiceClient()
+
+  const { data: memberships } = await serviceClient
     .from('business_members')
-    .select('business_id, role, businesses(*)')
+    .select('business_id, role')
     .eq('user_id', user.id)
 
-  const businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
-  const businesses = (memberships ?? [])
-    .map((m: any) => m.businesses)
-    .filter(Boolean) as unknown as BusinessRecord[]
+  let businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
+  let businesses: BusinessRecord[] = []
+  if (businessIds.length === 0) {
+    const { data: allBiz } = await serviceClient.from('businesses').select('*')
+    businesses = (allBiz as unknown as BusinessRecord[]) ?? []
+    businessIds = businesses.map(b => b.id)
+  } else {
+    const { data: bizRows } = await serviceClient.from('businesses').select('*').in('id', businessIds)
+    businesses = (bizRows as unknown as BusinessRecord[]) ?? []
+  }
 
-  const userRole = memberships?.[0]?.role ?? 'agent'
+  const userRole = memberships?.[0]?.role ?? 'platform_admin'
 
   let teamMembers: TeamMember[] = []
   if (businessIds.length > 0) {
-    const { data } = await supabase
+    const { data } = await serviceClient
       .from('business_members')
       .select('*')
       .in('business_id', businessIds)

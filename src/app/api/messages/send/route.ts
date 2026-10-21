@@ -31,8 +31,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Message too long (max 4000 characters)' }, { status: 400 })
     }
 
+    const serviceClient = await createServiceClient()
+
     // 2. Verify user has access to this business
-    const { data: membership } = await supabase
+    const { data: membership } = await serviceClient
       .from('business_members')
       .select('role')
       .eq('user_id', user.id)
@@ -40,11 +42,20 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (!membership) {
-      return NextResponse.json({ error: 'Access denied to this business' }, { status: 403 })
+      // Check if user is platform admin across any business
+      const { data: anyAdmin } = await serviceClient
+        .from('business_members')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('role', 'platform_admin')
+        .limit(1)
+
+      if (!anyAdmin || anyAdmin.length === 0) {
+        return NextResponse.json({ error: 'Access denied to this business' }, { status: 403 })
+      }
     }
 
     // 3. Verify conversation belongs to this business (using service client for RLS bypass in verification)
-    const serviceClient = await createServiceClient()
     const { data: conv } = await serviceClient
       .from('conversations')
       .select('session_id, phone_number_id, business_id')
@@ -128,7 +139,6 @@ export async function POST(req: NextRequest) {
       message_id: providerMessageId ?? `manual_${Date.now()}`,
       direction: 'outbound' as const,
       session_id,
-      business_id,
       phone_number_id: business.phone_number_id,
       customer_phone,
       body: message.trim(),
@@ -138,6 +148,7 @@ export async function POST(req: NextRequest) {
       message_timestamp: now,
       created_at: now,
       metadata: {
+        business_id,
         agent_id: user.id,
         business_name: business.name,
         send_error: sendError,
@@ -154,7 +165,18 @@ export async function POST(req: NextRequest) {
       console.error('[send] Failed to save message:', insertError)
     }
 
-    // 7. Write audit log
+    // 7. Update conversation state: update last_message, reset unread_count, preserve AI state
+    await serviceClient
+      .from('conversations')
+      .update({
+        last_message: message.trim(),
+        last_message_at: now,
+        unread_count: 0,
+        updated_at: now,
+      })
+      .eq('session_id', session_id)
+
+    // 8. Write audit log
     await serviceClient.from('audit_log').insert({
       business_id,
       actor_id: user.id,

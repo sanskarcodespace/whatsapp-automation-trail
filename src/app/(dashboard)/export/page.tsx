@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ExportClient } from '@/components/export/ExportClient'
 
@@ -10,14 +10,22 @@ export default async function ExportPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: memberships } = await supabase
+  const serviceClient = await createServiceClient()
+
+  const { data: memberships } = await serviceClient
     .from('business_members')
-    .select('business_id, role, businesses(id, name)')
+    .select('business_id, role')
     .eq('user_id', user.id)
 
-  const businesses = (memberships ?? [])
-    .map((m: any) => m.businesses)
-    .filter(Boolean)
+  let businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
+  let businesses: any[] = []
+  if (businessIds.length === 0) {
+    const { data: allBiz } = await serviceClient.from('businesses').select('id, name')
+    businesses = allBiz ?? []
+  } else {
+    const { data: bizRows } = await serviceClient.from('businesses').select('id, name').in('id', businessIds)
+    businesses = bizRows ?? []
+  }
 
   return <ExportClient businesses={businesses} />
 }

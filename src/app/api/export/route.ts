@@ -32,13 +32,21 @@ export async function GET(req: NextRequest) {
 
     let query = serviceClient
       .from('wa_messages')
-      .select('wa_message_id, session_id, direction, phone_number_id, customer_phone, customer_name, body, status, intent, lead_status, is_manual_reply, message_timestamp, created_at, business_id')
+      .select('*')
       .gte('created_at', startDate)
       .order('created_at', { ascending: false })
       .limit(5000)
 
     if (business_id && business_id !== 'all') {
-      query = query.eq('business_id', business_id)
+      // Find phone_number_id for this business to filter
+      const { data: bRow } = await serviceClient
+        .from('businesses')
+        .select('phone_number_id')
+        .eq('id', business_id)
+        .single()
+      if (bRow?.phone_number_id) {
+        query = query.eq('phone_number_id', bRow.phone_number_id)
+      }
     }
 
     if (direction && (direction === 'inbound' || direction === 'outbound')) {
@@ -85,20 +93,27 @@ export async function GET(req: NextRequest) {
       return str
     }
 
-    const rows = (messages ?? []).map(m => [
-      escapeCsv(m.wa_message_id),
-      escapeCsv(m.session_id),
-      escapeCsv(m.message_timestamp || m.created_at),
-      escapeCsv(m.direction),
-      escapeCsv(m.customer_phone),
-      escapeCsv(m.customer_name),
-      escapeCsv(m.body),
-      escapeCsv(m.status),
-      escapeCsv(m.intent),
-      escapeCsv(m.lead_status),
-      escapeCsv(m.is_manual_reply ? 'Yes' : 'No'),
-      escapeCsv(m.business_id),
-    ].join(','))
+    const rows = (messages ?? []).map((msg: any) => {
+      const meta = typeof msg.metadata === 'object' && msg.metadata ? msg.metadata : {}
+      const intent = msg.intent || meta.intent || ''
+      const leadStatus = msg.lead_status || meta.lead_status || ''
+      const bizId = msg.business_id || meta.business_id || business_id || ''
+
+      return [
+        escapeCsv(msg.wa_message_id || msg.message_id),
+        escapeCsv(msg.session_id),
+        escapeCsv(msg.message_timestamp || msg.created_at),
+        escapeCsv(msg.direction),
+        escapeCsv(msg.customer_phone),
+        escapeCsv(msg.customer_name),
+        escapeCsv(msg.body || msg.message_text),
+        escapeCsv(msg.status),
+        escapeCsv(intent),
+        escapeCsv(leadStatus),
+        escapeCsv(msg.is_manual_reply ? 'Yes' : 'No'),
+        escapeCsv(bizId),
+      ].join(',')
+    })
 
     const csvContent = BOM + headers.join(',') + '\n' + rows.join('\n')
 

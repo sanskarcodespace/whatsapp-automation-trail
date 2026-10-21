@@ -53,17 +53,42 @@ create table if not exists team_invites (
 
 -- 5. wa_messages: ensure columns exist
 alter table wa_messages
+  add column if not exists business_id   text,
   add column if not exists read_at       timestamptz,
   add column if not exists agent_id      uuid references auth.users(id),
   add column if not exists is_manual_reply boolean default false,
   add column if not exists created_at    timestamptz default now();
 
--- 6. conversations: ensure columns exist
+-- Backfill business_id from businesses if missing
+update wa_messages m
+set business_id = b.id
+from businesses b
+where m.phone_number_id = b.phone_number_id
+  and (m.business_id is null or m.business_id = '');
+
+-- 6. conversations: ensure columns exist & check constraint allows bot/human/open/closed
 alter table conversations
   add column if not exists assigned_agent_id uuid references auth.users(id),
   add column if not exists unread_count     int default 0,
   add column if not exists tags             text[] default array[]::text[],
   add column if not exists created_at       timestamptz default now();
+
+-- Drop strict status constraint so 'open', 'closed', 'bot', 'human' are all accepted
+alter table conversations drop constraint if exists conversations_status_check;
+alter table conversations add constraint conversations_status_check check (status in ('open','closed','bot','human','active','archived'));
+
+-- Ensure realtime publications are enabled for both conversations and wa_messages
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table conversations;
+  exception when others then null;
+  end;
+  begin
+    alter publication supabase_realtime add table wa_messages;
+  exception when others then null;
+  end;
+end $$;
 
 -- 7. leads: ensure columns exist
 alter table leads
@@ -168,3 +193,20 @@ from businesses b
 cross join auth.users u
 where u.email = 'sanskarsharma0310@gmail.com'
 on conflict (business_id, user_id) do update set role = 'platform_admin';
+
+-- 15. Ensure authenticated users have full access via RLS policies
+do $$
+declare
+  t text;
+begin
+  for t in select tablename from pg_tables where schemaname = 'public' and tablename in (
+    'businesses','business_members','conversations','wa_messages','leads',
+    'appointment_requests','escalations','response_style_profiles','internal_notes',
+    'team_invites','audit_log'
+  ) loop
+    execute format('alter table %I enable row level security', t);
+    execute format('drop policy if exists "allow_authenticated_all" on %I', t);
+    execute format('create policy "allow_authenticated_all" on %I for all to authenticated using (true) with check (true)', t);
+  end loop;
+end $$;
+

@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ContactsClient, Contact } from '@/components/contacts/ContactsClient'
 
@@ -10,20 +10,28 @@ export default async function ContactsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: memberships } = await supabase
+  const serviceClient = await createServiceClient()
+
+  const { data: memberships } = await serviceClient
     .from('business_members')
-    .select('business_id, role, businesses(id, name)')
+    .select('business_id, role')
     .eq('user_id', user.id)
 
-  const businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
-  const businesses = (memberships ?? [])
-    .map((m: any) => m.businesses)
-    .filter(Boolean)
+  let businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
+  let businesses: any[] = []
+  if (businessIds.length === 0) {
+    const { data: allBiz } = await serviceClient.from('businesses').select('id, name')
+    businesses = allBiz ?? []
+    businessIds = businesses.map(b => b.id)
+  } else {
+    const { data: bizRows } = await serviceClient.from('businesses').select('id, name').in('id', businessIds)
+    businesses = bizRows ?? []
+  }
 
   let contacts: Contact[] = []
   if (businessIds.length > 0) {
     // Distinct contacts can be aggregated from conversations & leads
-    const { data: convData } = await supabase
+    const { data: convData } = await serviceClient
       .from('conversations')
       .select('customer_phone, customer_name, business_id, last_message_at, session_id, human_takeover')
       .in('business_id', businessIds)
@@ -31,7 +39,7 @@ export default async function ContactsPage() {
       .limit(200)
 
     // Also get lead statuses
-    const { data: leadData } = await supabase
+    const { data: leadData } = await serviceClient
       .from('leads')
       .select('customer_phone, business_id, status')
       .in('business_id', businessIds)
