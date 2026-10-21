@@ -1,0 +1,136 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-primary: 13 13 18;
+    --bg-secondary: 20 20 28;
+    --bg-card: 24 24 34;
+    --bg-hover: 32 32 44;
+    --border: 40 40 58;
+    --accent: 34 197 94;
+    --accent-hover: 22 163 74;
+    --accent-muted: 34 197 94 / 0.15;
+    --text-primary: 248 250 252;
+    --text-secondary: 148 163 184;
+    --text-muted: 100 116 139;
+    --red: 239 68 68;
+    --yellow: 234 179 8;
+    --blue: 59 130 246;
+    --purple: 168 85 247;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: rgb(var(--bg-primary));
+    color: rgb(var(--text-primary));
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body { min-height: 100vh; }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: rgb(var(--bg-primary)); }
+  ::-webkit-scrollbar-thumb { background: rgb(var(--border)); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgb(var(--text-muted)); }
+}
+
+@layer components {
+  /* Cards */
+  .card {
+    @apply bg-[rgb(var(--bg-card))] border border-[rgb(var(--border))] rounded-xl;
+  }
+  
+  /* Buttons */
+  .btn-primary {
+    @apply bg-green-500 hover:bg-green-600 text-white font-medium px-4 py-2 rounded-lg 
+           transition-all duration-150 text-sm flex items-center gap-2 disabled:opacity-50 
+           disabled:cursor-not-allowed active:scale-[0.98];
+  }
+  .btn-secondary {
+    @apply bg-[rgb(var(--bg-hover))] hover:bg-[rgb(var(--border))] text-[rgb(var(--text-primary))] 
+           font-medium px-4 py-2 rounded-lg transition-all duration-150 text-sm 
+           flex items-center gap-2 border border-[rgb(var(--border))];
+  }
+  .btn-ghost {
+    @apply text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))] 
+           hover:bg-[rgb(var(--bg-hover))] px-3 py-2 rounded-lg transition-all duration-150 
+           text-sm flex items-center gap-2;
+  }
+  .btn-danger {
+    @apply bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 
+           font-medium px-4 py-2 rounded-lg transition-all duration-150 text-sm flex items-center gap-2;
+  }
+
+  /* Inputs */
+  .input {
+    @apply bg-[rgb(var(--bg-secondary))] border border-[rgb(var(--border))] text-[rgb(var(--text-primary))]
+           placeholder:text-[rgb(var(--text-muted))] rounded-lg px-3 py-2 text-sm
+           focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50
+           transition-all duration-150 w-full;
+  }
+  
+  /* Status badges */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-green  { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/15 text-green-400; }
+  .badge-red    { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/15 text-red-400; }
+  .badge-yellow { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/15 text-yellow-400; }
+  .badge-blue   { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/15 text-blue-400; }
+  .badge-purple { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/15 text-purple-400; }
+  .badge-gray   { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-500/15 text-slate-400; }
+
+  /* Sidebar nav items */
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+           text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))]
+           hover:bg-[rgb(var(--bg-hover))] transition-all duration-150 cursor-pointer;
+  }
+  .nav-item.active {
+    @apply text-green-400 bg-green-500/10;
+  }
+
+  /* Message bubbles */
+  .msg-inbound {
+    @apply bg-[rgb(var(--bg-card))] border border-[rgb(var(--border))] text-[rgb(var(--text-primary))]
+           rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm max-w-[75%] whitespace-pre-wrap;
+  }
+  .msg-outbound {
+    @apply bg-green-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm 
+           max-w-[75%] whitespace-pre-wrap;
+  }
+  .msg-outbound-manual {
+    @apply bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm 
+           max-w-[75%] whitespace-pre-wrap;
+  }
+
+  /* Loading skeleton */
+  .skeleton {
+    @apply bg-[rgb(var(--bg-hover))] rounded animate-pulse;
+  }
+
+  /* Stat card */
+  .stat-card {
+    @apply bg-[rgb(var(--bg-card))] border border-[rgb(var(--border))] rounded-xl p-5 flex flex-col gap-2 hover:border-[rgb(var(--accent)/0.3)] transition-colors;
+  }
+}
+
+/* Animations */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-in { animation: slide-in-right 0.25s ease; }
+.animate-fade-in  { animation: fade-in 0.2s ease; }
+
+/* WhatsApp-style unread dot */
+.unread-dot {
+  @apply w-2 h-2 rounded-full bg-green-400 flex-shrink-0;
+}
