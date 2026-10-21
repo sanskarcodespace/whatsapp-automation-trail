@@ -1,6 +1,5 @@
 'use client'
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import {
   Bot, Sparkles, MessageSquare, Save, HelpCircle,
   Clock, ShieldAlert, CheckCircle2, Building2, BookOpen
@@ -11,15 +10,16 @@ type BusinessData = {
   id: string
   name: string
   system_prompt: string | null
-  ai_tone: string | null
-  services: string | null
-  products: string | null
-  prices: string | null
-  faqs: string | null
-  opening_hours: string | null
-  contact_details: string | null
-  booking_system: string | null
-  handoff_message: string | null
+  settings?: any
+  ai_tone?: string | null
+  services?: string | null
+  products?: string | null
+  prices?: string | null
+  faqs?: string | null
+  opening_hours?: string | null
+  contact_details?: string | null
+  booking_system?: string | null
+  handoff_message?: string | null
 }
 
 type StyleProfile = {
@@ -37,13 +37,17 @@ type Props = {
   userRole: string
 }
 
+function getBizField(b: any, key: string, fallback: string = ''): string {
+  if (!b) return fallback
+  return b.settings?.[key] ?? b[key] ?? fallback
+}
+
 export function AISettingsClient({ businesses, initialStyleProfiles, userRole }: Props) {
   const [selectedBizId, setSelectedBizId] = useState(businesses[0]?.id || '')
   const [bizList, setBizList] = useState<BusinessData[]>(businesses)
   const [styles, setStyles] = useState<StyleProfile[]>(initialStyleProfiles)
   const [saving, setSaving] = useState(false)
 
-  const supabase = createClient()
   const currentBiz = bizList.find(b => b.id === selectedBizId) || businesses[0]
   const currentStyle = styles.find(s => s.business_id === selectedBizId) || {
     business_id: selectedBizId,
@@ -56,13 +60,13 @@ export function AISettingsClient({ businesses, initialStyleProfiles, userRole }:
   // Form states
   const [form, setForm] = useState({
     system_prompt: currentBiz?.system_prompt || '',
-    ai_tone: currentBiz?.ai_tone || 'professional, warm, helpful, and concise',
-    services: currentBiz?.services || '',
-    prices: currentBiz?.prices || '',
-    faqs: currentBiz?.faqs || '',
-    opening_hours: currentBiz?.opening_hours || '',
-    contact_details: currentBiz?.contact_details || '',
-    handoff_message: currentBiz?.handoff_message || 'I have connected you with a human team member. Someone will assist you shortly!',
+    ai_tone: getBizField(currentBiz, 'ai_tone', 'professional, warm, helpful, and concise'),
+    services: getBizField(currentBiz, 'services', ''),
+    prices: getBizField(currentBiz, 'prices', ''),
+    faqs: getBizField(currentBiz, 'faqs', ''),
+    opening_hours: getBizField(currentBiz, 'opening_hours', ''),
+    contact_details: getBizField(currentBiz, 'contact_details', ''),
+    handoff_message: getBizField(currentBiz, 'handoff_message', 'I have connected you with a human team member. Someone will assist you shortly!'),
     style_notes: currentStyle?.style_notes || '',
     example_customer: currentStyle?.example_customer || '',
     example_reply: currentStyle?.example_reply || '',
@@ -74,13 +78,13 @@ export function AISettingsClient({ businesses, initialStyleProfiles, userRole }:
     const s = styles.find(x => x.business_id === id)
     setForm({
       system_prompt: b?.system_prompt || '',
-      ai_tone: b?.ai_tone || 'professional, warm, helpful, and concise',
-      services: b?.services || '',
-      prices: b?.prices || '',
-      faqs: b?.faqs || '',
-      opening_hours: b?.opening_hours || '',
-      contact_details: b?.contact_details || '',
-      handoff_message: b?.handoff_message || 'I have connected you with a human team member. Someone will assist you shortly!',
+      ai_tone: getBizField(b, 'ai_tone', 'professional, warm, helpful, and concise'),
+      services: getBizField(b, 'services', ''),
+      prices: getBizField(b, 'prices', ''),
+      faqs: getBizField(b, 'faqs', ''),
+      opening_hours: getBizField(b, 'opening_hours', ''),
+      contact_details: getBizField(b, 'contact_details', ''),
+      handoff_message: getBizField(b, 'handoff_message', 'I have connected you with a human team member. Someone will assist you shortly!'),
       style_notes: s?.style_notes || '',
       example_customer: s?.example_customer || '',
       example_reply: s?.example_reply || '',
@@ -91,40 +95,58 @@ export function AISettingsClient({ businesses, initialStyleProfiles, userRole }:
     if (!selectedBizId) return
     setSaving(true)
     try {
-      // 1. Update businesses table
-      const bizUpdates: any = {
-        system_prompt: form.system_prompt,
-        ai_tone: form.ai_tone,
-        services: form.services,
-        prices: form.prices,
-        faqs: form.faqs,
-        opening_hours: form.opening_hours,
-        contact_details: form.contact_details,
-        handoff_message: form.handoff_message,
-        updated_at: new Date().toISOString(),
+      const res = await fetch('/api/business/ai-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          business_id: selectedBizId,
+          system_prompt: form.system_prompt,
+          settings: {
+            ai_tone: form.ai_tone,
+            services: form.services,
+            prices: form.prices,
+            faqs: form.faqs,
+            opening_hours: form.opening_hours,
+            contact_details: form.contact_details,
+            handoff_message: form.handoff_message,
+          },
+          style: {
+            style_notes: form.style_notes,
+            example_customer: form.example_customer,
+            example_reply: form.example_reply,
+          },
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to save settings')
       }
-
-      const { error: bizErr } = await (supabase.from('businesses') as any)
-        .update(bizUpdates)
-        .eq('id', selectedBizId)
-
-      if (bizErr) throw bizErr
-
-      // 2. Update/upsert response_style_profiles
-      const stylePayload: any = {
-        business_id: selectedBizId,
-        approved: true,
-        style_notes: form.style_notes,
-        example_customer: form.example_customer,
-        example_reply: form.example_reply,
-      }
-
-      await (supabase.from('response_style_profiles') as any)
-        .upsert(stylePayload, { onConflict: 'business_id' })
 
       // Update local state
-      setBizList(prev => prev.map(b => b.id === selectedBizId ? { ...b, ...bizUpdates } : b))
+      setBizList(prev => prev.map(b => b.id === selectedBizId ? {
+        ...b,
+        system_prompt: form.system_prompt,
+        settings: data.settings || {
+          ...(b.settings || {}),
+          ai_tone: form.ai_tone,
+          services: form.services,
+          prices: form.prices,
+          faqs: form.faqs,
+          opening_hours: form.opening_hours,
+          contact_details: form.contact_details,
+          handoff_message: form.handoff_message,
+        }
+      } : b))
+
       setStyles(prev => {
+        const stylePayload = {
+          business_id: selectedBizId,
+          approved: true,
+          style_notes: form.style_notes,
+          example_customer: form.example_customer,
+          example_reply: form.example_reply,
+        }
         const idx = prev.findIndex(s => s.business_id === selectedBizId)
         if (idx >= 0) {
           const next = [...prev]
