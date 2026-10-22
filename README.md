@@ -2,8 +2,7 @@
 
 A professional, production-oriented multi-tenant CRM dashboard designed for businesses selling WhatsApp AI automation across independent client organizations.
 
----
-
+----
 ## 🌟 Key Features & Capabilities
 
 ### 🏢 Multi-Tenant Architecture & Security
