@@ -1,0 +1,66 @@
+Task: Upgrade My Existing Multi-Client WhatsApp Real Estate AI Automation
+
+Act as a senior n8n automation engineer, WhatsApp Business API integration specialist, and conversational AI developer.
+
+I already have a working WhatsApp real estate automation built using n8n Cloud. It serves multiple real estate clients. One client's project and property information has already been added, and the bot can respond to customer messages.
+
+Your job is to inspect the existing implementation, identify its actual weaknesses, and improve it without breaking the current working functionality.
+
+Do not rebuild everything from scratch. First inspect the existing workflow, nodes, AI prompts, memory, database connections, WhatsApp provider, credentials configuration, and lead-handling logic. Then implement the required changes using the existing architecture wherever practical.
+
+1. Make WhatsApp replies natural and concise
+
+The current bot sends very long paragraphs containing multiple property names, prices, amenities, possession dates, locations, and other details. These replies look copied and pasted from a property database.
+
+Change the conversation style:
+
+- Default to 2–3 short, natural sentences per response.
+- Use conversational Indian Hinglish when the customer uses Hindi or Hinglish.
+- Use English when the customer prefers English.
+- Answer the customer's exact question first.
+- Include only the most relevant property information.
+- Ask no more than one useful follow-up question per turn.
+- Avoid repeatedly greeting the customer by name.
+- Do not repeat information already provided unless necessary.
+- Do not list every project and every amenity in every response.
+- Explain property information naturally instead of dumping database records.
+- Provide detailed property descriptions only when requested.
+- If the customer asks for several specific details, answer those details concisely and clearly.
+
+Example:
+
+Customer: "3 BHK chahiye, Amolik Park mein. Budget 70 lakh tak hai."
+
+Preferred reply:
+"Haanji! Aapke 
+<truncated 9163 bytes>
+esting.
+
+10. Implementation rules
+
+- Inspect the actual workflow and code before making changes.
+- Preserve working integrations and existing credentials.
+- Never print or expose secrets.
+- Do not replace existing infrastructure without a clear technical reason.
+- Avoid unnecessary dependencies.
+- Keep the workflow maintainable and production-oriented.
+- Do not claim that a feature is implemented or tested unless you have actually implemented and verified it.
+- If the current architecture cannot support a requirement, explain the limitation and implement the safest practical alternative.
+- Do not deploy, publish, or overwrite a live production workflow without the necessary authorization.
+
+Final deliverables
+
+After completing the work, provide:
+
+1. A summary of the existing problems discovered.
+2. The exact changes made.
+3. The updated workflow or source files.
+4. Any required database schema or migration changes.
+5. Any configuration variables I need to set.
+6. Clear instructions for importing or applying the changes to n8n Cloud.
+7. A test report showing which scenarios passed, failed, or could not be tested.
+8. Any remaining limitations.
+
+The final result should behave like a natural, context-aware real estate sales assistant, not a chatbot that copies entire property records into WhatsApp.
+
+Prioritize correct message handling, concise human-like responses, property accuracy, reliability, and strict multi-client data isolation.

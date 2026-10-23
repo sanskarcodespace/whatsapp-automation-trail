@@ -1,0 +1,243 @@
+Task: Upgrade My Existing Multi-Client WhatsApp Real Estate AI Automation
+
+Act as a senior n8n automation engineer, WhatsApp Business API integration specialist, and conversational AI developer.
+
+I already have a working WhatsApp real estate automation built using n8n Cloud. It serves multiple real estate clients. One client's project and property information has already been added, and the bot can respond to customer messages.
+
+Your job is to inspect the existing implementation, identify its actual weaknesses, and improve it without breaking the current working functionality.
+
+Do not rebuild everything from scratch. First inspect the existing workflow, nodes, AI prompts, memory, database connections, WhatsApp provider, credentials configuration, and lead-handling logic. Then implement the required changes using the existing architecture wherever practical.
+
+1. Make WhatsApp replies natural and concise
+
+The current bot sends very long paragraphs containing multiple property names, prices, amenities, possession dates, locations, and other details. These replies look copied and pasted from a property database.
+
+Change the conversation style:
+
+- Default to 2–3 short, natural sentences per response.
+- Use conversational Indian Hinglish when the customer uses Hindi or Hinglish.
+- Use English when the customer prefers English.
+- Answer the customer's exact question first.
+- Include only the most relevant property information.
+- Ask no more than one useful follow-up question per turn.
+- Avoid repeatedly greeting the customer by name.
+- Do not repeat information already provided unless necessary.
+- Do not list every project and every amenity in every response.
+- Explain property information naturally instead of dumping database records.
+- Provide detailed property descriptions only when requested.
+- If the customer asks for several specific details, answer those details concisely and clearly.
+
+Example:
+
+Customer: "3 BHK chahiye, Amolik Park mein. Budget 70 lakh tak hai."
+
+Preferred reply:
+"Haanji! Aapke budget mein Amolik Park ka 3 BHK option check kar sakte hain. Aapko ready-to-move flat chahiye ya under-construction bhi chalega?"
+
+Never invent a property price or claim availability without supporting data.
+
+2. Correctly combine multiple incoming messages
+
+Customers frequently send several messages within a few seconds.
+
+Example:
+
+- Message 1: "3 BHK"
+- Message 2: "Amolik Park"
+- Message 3: "Budget 70 lakh"
+
+The current implementation may trigger separate executions and process only one message or generate multiple replies.
+
+Implement a reliable message aggregation mechanism.
+
+Requirements:
+
+1. Persist every incoming message before processing.
+2. Identify the client, customer and WhatsApp conversation using stable identifiers.
+3. Maintain a separate pending-message buffer for each client and customer conversation.
+4. Start or reset a configurable quiet window after each incoming message. Use 3–5 seconds as an initial setting.
+5. Collect messages received within the window and combine their text in chronological order.
+6. Pass the combined messages, conversation history and relevant customer requirements to the AI as one logical customer turn.
+7. Generate one appropriate response for that batch, rather than one response per individual message.
+8. If more messages arrive while the AI is processing, preserve and process them instead of losing them.
+9. Prevent multiple overlapping workflow executions from processing the same batch.
+10. Use durable storage, message IDs, locks or version checks, and idempotency controls as appropriate to the existing architecture.
+11. Configure a maximum wait time and sensible limits for message count and payload size.
+12. Handle webhook retries and duplicate incoming message events safely.
+
+Do not implement message collection using an unreliable fixed Wait node alone if that can cause race conditions, duplicate replies, or lost messages. Choose an approach suitable for n8n Cloud and the existing storage system.
+
+3. Handle WhatsApp replies to earlier messages
+
+Customers may reply directly to a previous WhatsApp message rather than send a completely new message.
+
+For example, the bot recommends a property, the customer replies to that earlier recommendation with "Price?" or "Is this available?"
+
+Implement contextual reply handling.
+
+Requirements:
+
+1. Inspect the actual incoming WhatsApp webhook payload to determine whether a message contains a quoted or referenced message ID.
+2. Extract the referenced message ID when available.
+3. Maintain a mapping of outgoing WhatsApp message IDs to their message text, client ID, customer ID, timestamp, and relevant property/project ID.
+4. Resolve the referenced message against stored outgoing messages.
+5. Pass the referenced message content and its property/project context to the AI.
+6. Combine this reference with the customer's new message and recent conversation history.
+7. Answer the question about the correct property instead of treating it as an unrelated request.
+8. If the referenced message cannot be found, use recent conversation context when reliable; otherwise ask a short clarification.
+9. Respect the actual capabilities and payload structure of the current WhatsApp provider. Do not assume fields exist without checking.
+
+Example:
+
+Previous bot message: "Amolik Park mein 3 BHK options available hain."
+
+Customer replies to that message: "Price?"
+
+Expected behaviour: Answer about the 3 BHK options in Amolik Park using verified price information.
+
+4. Handle short messages, including a single dot
+
+A customer may send ".", "?", "Yes", "Okay", "Send details", or another very short message.
+
+Do not automatically ignore these messages.
+
+Requirements:
+
+- Process a dot or short message like any other inbound message.
+- If it references an earlier WhatsApp message, resolve that message context first.
+- Determine whether it is a clarification, acknowledgement, request for details, or ambiguous response using the conversation history.
+- If its meaning is clear, respond appropriately to the correct context.
+- If its meaning is unclear, ask a brief clarification.
+- Never interpret a dot as confirmation, booking approval, or consent unless the surrounding context clearly supports that interpretation.
+- Do not discard messages because they are short, contain punctuation, or have a low text length.
+- Ensure message aggregation and reply-context handling work together.
+
+5. Improve conversation memory and lead qualification
+
+Maintain structured customer requirements where supported by the existing database:
+
+- Preferred location or project
+- Property type and BHK
+- Budget
+- Ready-to-move or under-construction preference
+- Preferred floor, if specified
+- Purchase timeline, if specified
+- Site visit preference
+- Contact details, when provided
+- Previously discussed properties and unresolved questions
+
+Update memory when the customer provides new information.
+
+Do not ask again for information already provided unless confirmation is necessary.
+
+Ask only for missing information that is relevant to the customer's current request. Do not force the customer through a long questionnaire.
+
+When the customer requests a callback or site visit, create or update a lead using the existing lead system and send the responsible owner a concise summary.
+
+Example lead summary:
+
+"New lead: 3 BHK in Amolik Park, budget up to ₹70 lakh, prefers ready-to-move. Customer has requested pricing. Follow up to verify current availability."
+
+Never fabricate missing lead details.
+
+6. Enforce strict multi-client isolation
+
+This is a multi-client automation that will be sold to different businesses.
+
+Ensure that every incoming event is associated with the correct client before retrieving property data or conversation memory.
+
+Requirements:
+
+- Separate client configuration, credentials, property information, prompts, conversation history and leads.
+- Use explicit client identifiers and customer/conversation identifiers.
+- Never allow one client's property details, prices, leads, phone numbers, memory or credentials to appear in another client's conversation.
+- Avoid global, unfiltered AI memory shared across clients.
+- Ensure every database query is appropriately scoped to the authenticated client.
+- Validate the mapping between each WhatsApp number/account and its client configuration.
+- Do not expose API keys, access tokens or secrets in AI prompts, logs or customer messages.
+- Reuse existing multi-client architecture where it is safe; do not introduce unnecessary infrastructure.
+
+7. Improve factual accuracy and customer experience
+
+- Treat the property database as the source of truth.
+- Never invent prices, availability, floor numbers, amenities, possession dates or project specifications.
+- If the requested information is missing, say that it needs to be verified.
+- Distinguish between verified facts and information awaiting confirmation.
+- Do not promise callbacks, bookings or site visits unless the relevant action has actually been recorded or confirmed.
+- Avoid sending the same answer twice.
+- If the customer wants a human, arrange a handoff rather than continuing to repeat automated information.
+- Preserve the customer's preferred language and the conversation's context.
+
+8. Make the n8n workflow reliable
+
+Inspect and improve error handling across the existing workflow.
+
+Include, where appropriate:
+
+- Webhook validation
+- Duplicate-event protection
+- Persistent inbound-message storage
+- Safe message batching
+- Per-conversation processing control
+- WhatsApp API error handling
+- Appropriate retries with backoff
+- Protection against duplicate outbound messages
+- Logging and execution monitoring
+- Failed-message recovery
+- Safe handling of rate limits and temporary provider outages
+- Configurable batching and processing limits
+
+Do not retry indefinitely. Do not retry permanent failures without a corrective action. Do not acknowledge a message as successfully sent unless the provider confirms the send operation.
+
+Do not expose customer personal data unnecessarily in execution logs.
+
+9. Test the complete implementation
+
+Test the following scenarios:
+
+1. One normal customer message receives one concise reply.
+2. Three messages sent rapidly are combined into one logical customer turn.
+3. A new message arriving during processing is not lost.
+4. A duplicate webhook event does not create a duplicate reply.
+5. A customer replies to an older property recommendation with "Price?"
+6. A customer replies to an older message about a different project.
+7. A single "." is processed and handled using context or a clarification.
+8. A short "Yes" message is interpreted in the correct context.
+9. A customer changes their budget or property preference.
+10. A property price is missing from the database.
+11. The WhatsApp API temporarily fails.
+12. Two different customers message simultaneously.
+13. Two different clients receive messages at the same time.
+14. One client's data cannot be retrieved in another client's conversation.
+15. A customer requests a human callback.
+
+Use mocked payloads and test credentials where possible. Do not send unsolicited messages to real customers while testing.
+
+10. Implementation rules
+
+- Inspect the actual workflow and code before making changes.
+- Preserve working integrations and existing credentials.
+- Never print or expose secrets.
+- Do not replace existing infrastructure without a clear technical reason.
+- Avoid unnecessary dependencies.
+- Keep the workflow maintainable and production-oriented.
+- Do not claim that a feature is implemented or tested unless you have actually implemented and verified it.
+- If the current architecture cannot support a requirement, explain the limitation and implement the safest practical alternative.
+- Do not deploy, publish, or overwrite a live production workflow without the necessary authorization.
+
+Final deliverables
+
+After completing the work, provide:
+
+1. A summary of the existing problems discovered.
+2. The exact changes made.
+3. The updated workflow or source files.
+4. Any required database schema or migration changes.
+5. Any configuration variables I need to set.
+6. Clear instructions for importing or applying the changes to n8n Cloud.
+7. A test report showing which scenarios passed, failed, or could not be tested.
+8. Any remaining limitations.
+
+The final result should behave like a natural, context-aware real estate sales assistant, not a chatbot that copies entire property records into WhatsApp.
+
+Prioritize correct message handling, concise human-like responses, property accuracy, reliability, and strict multi-client data isolation.
