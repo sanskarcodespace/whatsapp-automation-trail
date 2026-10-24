@@ -4,11 +4,15 @@ Updated 24 October 2026, Asia/Kolkata.
 
 ## Current deployment status
 
-The code is in `/Users/sanskar/whatspp automation trail/whatsapp-automation-trail`, the actual working directory of the server on port 3000. The earlier Desktop clone is not the running CRM. No commit or push has been made.
+The code is in `/Users/sanskar/whatspp automation trail/whatsapp-automation-trail`, the actual working directory of the server on port 3000. The earlier Desktop clone is not the running CRM. The checkout was at `05d221a` when deployment resumed; this deployment did not create a commit, push, or public CRM deployment.
 
-**The new controls are not fully live yet.** Migration `006_crm_client_control.sql` and the regenerated n8n code must be deployed together. The browser tool still reports “Local browser use is disabled in Work settings”; the installed Supabase CLI has no authenticated access token. These prevent publishing in this session. The existing live workflow has not been replaced by this local upgrade.
+**The CRM-control integration is now deployed.** On 24 October 2026, migration `006_crm_client_control.sql` completed successfully in Supabase project `rjcdzlqspauyqzqtmwcq`. The existing n8n workflow was published as **CRM-controlled multi-client catalog and behavior**, version `a321394a-b25c-4f37-9eee-23b30d242bce`. Only **Build AI Context** and **Prepare Updates** were replaced, and both pasted code values were checked against the tested generated source. Credentials, trigger identity, wiring and recovery settings were not edited.
 
-The local server can render the new pages, but save/create/verify actions require migration 006. Until then the API deliberately reports a deployment error instead of pretending a save succeeded. Do not claim CRM settings have changed live WhatsApp behavior before updating both components.
+The signed-in CRM renders the 16-project catalog and client/team controls. An unchanged configuration was saved successfully through the UI. A read-only live `workflow_context` call returned the CRM catalog and correct 2 BHK price; changing a copy in memory changed the policy result without touching live prices or sending messages. The three CRM functions allow service-role execution and deny direct authenticated-browser execution. Customer message and conversation counts were unchanged by migration.
+
+At 21:30 IST on 24 October, the user's test chat ending 7422 sent `hii`. The workflow replied `Hello! How are you?`, stored a provider message ID and completed its batch in one attempt with no recorded error. The user confirmed receiving that reply. After a resend request, `Amolik Heights 2 BHK price` arrived at 21:40:59 IST. Its two replies at 21:41 quoted the CRM's ₹62.78L–₹63.42L price and matching amenities, with provider IDs and a completed single-attempt batch. The user supplied both received replies. These tests verify greeting and current-catalog replies for this client, not every acceptance case or another client's WhatsApp connection. Live prices were not changed.
+
+**New-number activation still needs setup.** The three server-side Meta environment values below are absent. The existing Amolik client remains active with `pending` connection status and no recorded WABA ID; its used phone identity is intentionally locked. Do not pause it expecting to resume before a verified WABA binding and provider setup are completed. No fabricated client or team access was created during verification.
 
 ## What was wrong
 
@@ -65,7 +69,7 @@ For email signup, enable the intended Supabase email provider/confirmation confi
 - No approved owner-alert template exists. Free-form owner alerts remain subject to the owner's own reply window; the CRM's pending requests remain the dependable record.
 - Manual replies still require the separately configured authenticated n8n manual-reply webhook returning Meta's message ID.
 - Shared model credentials, app/webhook infrastructure, safety rules, and token management remain operator-managed infrastructure, not editable client knowledge.
-- The CRM visual review and a real WhatsApp end-to-end test remain pending browser access. Automated tests are not evidence of delivery to a real phone.
+- Signed-in CRM inspection, configuration-save verification and user-confirmed WhatsApp greeting/current-price replies are complete. The broader real-phone acceptance checklist and another client's WhatsApp onboarding remain unverified; automated tests alone do not prove delivery.
 
 ## Verification
 

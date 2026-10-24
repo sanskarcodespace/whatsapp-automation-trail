@@ -4,7 +4,7 @@ A professional, production-oriented multi-tenant CRM dashboard designed for busi
 
 ## Implementation Status
 
-The durable queue workflow and tenant-isolation database changes were published to the existing n8n/Supabase project on 23 October 2026. The 24 October CRM-control upgrade is implemented locally in the checkout serving localhost:3000; migration 006 and the updated workflow still require live deployment. Read [the CRM operator guide](docs/CRM_CLIENT_CONTROL.md) and [the implementation audit](docs/IMPLEMENTATION_AUDIT.md) before using the new controls.
+The durable queue workflow and tenant-isolation database changes were published to the existing n8n/Supabase project on 23 October 2026. The 24 October CRM-control upgrade is now deployed: migration 006 is applied and workflow version `a321394a-b25c-4f37-9eee-23b30d242bce` is published. The local CRM configuration save and live catalog context are verified. Fresh WhatsApp greeting and Amolik Heights 2 BHK price tests completed successfully; the user confirmed receiving the replies, and the price and amenities match the CRM catalog. The broader acceptance checklist remains incomplete. New-number activation still requires Meta/server credential setup. Read [the CRM operator guide](docs/CRM_CLIENT_CONTROL.md) and [the implementation audit](docs/IMPLEMENTATION_AUDIT.md) before onboarding clients.
 
 Owner WhatsApp alerts currently use free text. The owner has no approved alert template, so alerts outside the owner's 24-hour customer-service window are not reliable. Visit requests and escalations are saved before attempting the alert; the bot never confirms a booking.
 

@@ -6,12 +6,12 @@ Updated 24 October 2026, Asia/Kolkata.
 
 | Component | Verified state |
 | --- | --- |
-| [n8n workflow FjdX8g9eDzTtx1Dc](https://sanskarwhatsapp.app.n8n.cloud/workflow/FjdX8g9eDzTtx1Dc) | Published on 23 October as **Durable tenant queue and request-only visit handling**, 54 nodes; Published status rechecked on 24 October. |
+| [n8n workflow FjdX8g9eDzTtx1Dc](https://sanskarwhatsapp.app.n8n.cloud/workflow/FjdX8g9eDzTtx1Dc) | Published on 24 October as **CRM-controlled multi-client catalog and behavior**, version `a321394a-b25c-4f37-9eee-23b30d242bce`. Both policy code nodes match the tested source; other nodes and credentials were not edited. |
 | [Supabase project](https://supabase.com/dashboard/project/rjcdzlqspauyqzqtmwcq) | Migration 003 and the tenant-specific 004 configuration applied on 23 October. The delivery-reservation retry fix was also applied and verified. |
 | Lead-stage compatibility | Migration 005 applied on 24 October; the live constraint includes `appointment` and preserves existing legacy stages. |
-| Dashboard and repository | Changes are in the actual localhost checkout `/Users/sanskar/whatspp automation trail/whatsapp-automation-trail`; no commit, push or public deployment. The separate `whatsapp-automation` checkout was not modified. |
-| CRM-controlled client upgrade | Migration 006, client/team controls, full catalog/settings UI and updated runtime policy are implemented locally. Live migration/publication is pending browser access; see the [CRM operator guide](CRM_CLIENT_CONTROL.md). |
-| External message delivery | No customer or owner test messages were sent by the agent. Real-phone acceptance testing remains necessary. |
+| Dashboard and repository | Changes are in the actual localhost checkout `/Users/sanskar/whatspp automation trail/whatsapp-automation-trail`, observed at `05d221a` when deployment resumed. No commit, push or public deployment was performed during this deployment. The separate `whatsapp-automation` checkout was not modified. |
+| CRM-controlled client upgrade | Migration 006 applied successfully; live context contains 16 catalog groups and approved style support. Service-only RPC privileges were verified. Signed-in catalog/client controls and a configuration save were verified. See the [CRM operator guide](CRM_CLIENT_CONTROL.md). |
+| External message delivery | The user's fresh greeting at 21:30 IST and Amolik Heights 2 BHK question at 21:40:59 IST on 24 October produced received replies. The price and amenities match the CRM catalog. Both batches completed in one attempt without recorded errors; each reply has a provider ID. No messages were manually sent or replayed by the agent. Broader acceptance testing remains incomplete. |
 
 The live empty-queue smoke test executed **Find Pending Sessions** successfully through the configured Supabase credential. A database verification query confirmed queue/batch tables, zero unscoped message records at the time of inspection, worker RPC restrictions, and the Amolik-only catalog/owner configuration. This does not establish end-to-end WhatsApp delivery or unlimited reliability.
 
@@ -80,7 +80,7 @@ Set the Supabase public URL/anon key and server-only service-role key through th
 
 The separate manual-reply webhook must authenticate `X-Webhook-Secret`, use the matching tenant's WhatsApp sender, await Meta's response, and return JSON containing `messages[0].id`. A generic `workflow started` response is intentionally treated as uncertain delivery. This endpoint was not created or verified as part of the published main AI workflow.
 
-Deploy migration 006 and the dashboard before depending on the new client controls. Client creation and membership changes now use authenticated server APIs, not direct browser table writes. The first platform operator remains a trusted administrative bootstrap. Provider onboarding and token configuration are prerequisites; see [CRM client control](CRM_CLIENT_CONTROL.md).
+Migration 006 is deployed to the current project, and the local dashboard uses the new controls. Other deployments must apply it before using these APIs. Client creation and membership changes use authenticated server APIs, not direct browser table writes. The first platform operator remains a trusted administrative bootstrap. Provider onboarding and token configuration remain prerequisites: the server's Meta configuration is absent, and the existing active Amolik record has no WABA ID. Do not pause that legacy client before completing verified connection setup. See [CRM client control](CRM_CLIENT_CONTROL.md).
 
 ## Reconciliation and rollback
 
@@ -105,7 +105,18 @@ git diff --check
 
 The CRM upgrade passed 59 ingestion/policy/API/workflow tests and 23 real-PostgreSQL tests, 82 total. Database tests use a temporary local cluster, synthetic tenants, Unix sockets only, and automatic cleanup. They exercise migration reapplication, concurrent claims, tenant isolation, saved-result recovery, quote context, handoff, delivery checkpoints, dashboard stages and CRM management/settings.
 
-Workflow generation consistency, TypeScript, whitespace checks and targeted ESLint pass. The production build also passes in the actual localhost checkout with its existing environment, without exposing credentials. Unauthenticated HTTP smoke checks return 200 for login/signup and 401 for client mutations. This is not a signed-in visual review or proof of WhatsApp delivery. Existing dependency-audit findings and the Next middleware deprecation warning remain outside this change.
+Workflow generation consistency, TypeScript, whitespace checks and targeted ESLint pass. The production build also passes in the actual localhost checkout with its existing environment, without exposing credentials. Unauthenticated HTTP smoke checks return 200 for login/signup and 401 for client mutations. All 82 tests and workflow consistency were rerun successfully before live deployment. Signed-in CRM inspection and an unchanged configuration save now pass; the live context returns the current catalog and pricing. A price-change simulation used only an in-memory copy, not a real price edit or outbound message. The user-confirmed greeting and current-price tests below verify these real-phone delivery paths for one client, not the full acceptance checklist or another client's connection. Existing dependency-audit findings and the Next middleware deprecation warning remain outside this change.
+
+### Fresh greeting and price verification
+
+- Inbound `hii`: 24 October 2026, 16:00:28 UTC / 21:30:28 IST, consenting test chat ending 7422.
+- Outbound `Hello! How are you?`: 16:00:39 UTC, status `sent`, provider message ID present; no property pitch.
+- Batch `ad1ae59f-65a2-4ac9-a600-18343f9e184b`: completed at 16:00:40 UTC, one attempt, no last error; its inbound queue row is completed. No recent tenant workflow errors or unresolved messages for this sender were found.
+- The user confirmed receiving the greeting reply. This confirmation is separate from the database's `sent` status, which records provider acceptance rather than a delivery/read receipt.
+- The initially reported price question was absent from ingestion records; after a resend request, `Amolik Heights 2 BHK price` arrived at 16:10:59 UTC / 21:40:59 IST. The earlier missing message's cause remains undetermined; this does not prove all provider webhooks arrive reliably.
+- The price reply at 16:11:08 UTC states `2 BHK: ₹62.78L–₹63.42L`; the amenities reply at 16:11:13 UTC lists gated society, 24/7 security, power backup, lifts and clubhouse. Both match the live CRM catalog and have provider message IDs. The user supplied both received replies.
+- Price batch `088c43c9-d12c-462f-b03f-d048b18c6928` completed at 16:11:14 UTC in one attempt with no last error; both delivery parts are `sent`, its queue row is completed, and no session workflow errors were recorded. The observed send-record gap is about 4.7 seconds, including the configured two-second delay and processing/provider overhead.
+- No real catalog values, takeover settings or delivery checkpoints were changed during either test, and no completed batch was replayed.
 
 ## Real-phone acceptance checklist
 
