@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
@@ -119,7 +120,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-slate-600 mt-6">
-          Contact your platform administrator for access.
+          New team member? <Link href="/signup" className="text-green-400">Create an account</Link>, then ask your operator for client access.
         </p>
       </div>
     </div>

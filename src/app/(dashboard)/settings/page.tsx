@@ -17,18 +17,16 @@ export default async function SettingsPage() {
     .select('business_id, role')
     .eq('user_id', user.id)
 
-  let businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
+  const businessIds = (memberships ?? []).map(membership => membership.business_id).filter(Boolean)
   let businesses: BusinessRecord[] = []
-  if (businessIds.length === 0) {
-    const { data: allBiz } = await serviceClient.from('businesses').select('*')
-    businesses = (allBiz as unknown as BusinessRecord[]) ?? []
-    businessIds = businesses.map(b => b.id)
-  } else {
-    const { data: bizRows } = await serviceClient.from('businesses').select('*').in('id', businessIds)
+  if (businessIds.length > 0) {
+    const { data: bizRows } = await serviceClient.from('businesses')
+      .select('id, name, phone_number_id, waba_id, is_active, connection_status, timezone, supported_languages, created_at')
+      .in('id', businessIds)
     businesses = (bizRows as unknown as BusinessRecord[]) ?? []
   }
 
-  const userRole = memberships?.[0]?.role ?? 'platform_admin'
+  const canProvision = memberships?.some(membership => membership.role === 'platform_admin') ?? false
 
   let teamMembers: TeamMember[] = []
   if (businessIds.length > 0) {
@@ -45,7 +43,7 @@ export default async function SettingsPage() {
       businesses={businesses}
       teamMembers={teamMembers}
       userId={user.id}
-      userRole={userRole}
+      canProvision={canProvision}
     />
   )
 }

@@ -17,18 +17,14 @@ export default async function ContactsPage() {
     .select('business_id, role')
     .eq('user_id', user.id)
 
-  let businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
-  let businesses: any[] = []
-  if (businessIds.length === 0) {
-    const { data: allBiz } = await serviceClient.from('businesses').select('id, name')
-    businesses = allBiz ?? []
-    businessIds = businesses.map(b => b.id)
-  } else {
+  const businessIds = (memberships ?? []).map(membership => membership.business_id).filter(Boolean)
+  let businesses: Parameters<typeof ContactsClient>[0]['businesses'] = []
+  if (businessIds.length > 0) {
     const { data: bizRows } = await serviceClient.from('businesses').select('id, name').in('id', businessIds)
     businesses = bizRows ?? []
   }
 
-  let contacts: Contact[] = []
+  const contacts: Contact[] = []
   if (businessIds.length > 0) {
     // Distinct contacts can be aggregated from conversations & leads
     const { data: convData } = await serviceClient
@@ -45,14 +41,14 @@ export default async function ContactsPage() {
       .in('business_id', businessIds)
 
     const leadMap = new Map<string, string>()
-    ;(leadData ?? []).forEach((l: any) => {
-      if (l.customer_phone && l.business_id) {
-        leadMap.set(`${l.business_id}:${l.customer_phone}`, l.status)
+    ;(leadData ?? []).forEach(lead => {
+      if (lead.customer_phone && lead.business_id) {
+        leadMap.set(`${lead.business_id}:${lead.customer_phone}`, lead.status ?? 'new')
       }
     })
 
     const seen = new Set<string>()
-    ;(convData ?? []).forEach((c: any) => {
+    ;(convData ?? []).forEach(c => {
       if (!c.customer_phone) return
       const key = `${c.business_id}:${c.customer_phone}`
       if (seen.has(key)) return

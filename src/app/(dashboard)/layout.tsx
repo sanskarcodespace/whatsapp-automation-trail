@@ -17,33 +17,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .select('business_id, role')
     .eq('user_id', user.id)
 
-  const bizIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
+  const bizIds = (memberships ?? []).map(membership => membership.business_id).filter(Boolean)
 
-  let businesses: any[] = []
+  let businesses: Parameters<typeof Sidebar>[0]['businesses'] = []
   if (bizIds.length > 0) {
     const { data: bizRows } = await serviceClient
       .from('businesses')
-      .select('*')
+      .select('id, name, phone_number_id, connection_status')
       .in('id', bizIds)
 
-    const roleMap = new Map((memberships ?? []).map((m: any) => [m.business_id, m.role]))
-    businesses = (bizRows ?? []).map((b: any) => ({
+    const roleMap = new Map((memberships ?? []).map(membership => [membership.business_id, membership.role]))
+    businesses = (bizRows ?? []).map(b => ({
       ...b,
       role: roleMap.get(b.id) || 'agent',
     }))
-  }
-
-  // If no explicit membership yet, auto-link to existing businesses for platform admin
-  if (businesses.length === 0) {
-    const { data: allBiz } = await serviceClient.from('businesses').select('*').limit(5)
-    businesses = (allBiz ?? []).map((b: any) => ({ ...b, role: 'platform_admin' }))
-    if (allBiz && allBiz[0]) {
-      await serviceClient.from('business_members').upsert({
-        business_id: allBiz[0].id,
-        user_id: user.id,
-        role: 'platform_admin'
-      }, { onConflict: 'business_id,user_id' })
-    }
   }
 
   return (

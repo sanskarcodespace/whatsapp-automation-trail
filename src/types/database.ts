@@ -52,6 +52,7 @@ export type Database = {
           id: string
           wa_message_id: string | null
           message_id: string | null
+          quoted_message_id: string | null
           direction: 'inbound' | 'outbound'
           session_id: string | null
           phone_number_id: string | null
@@ -103,6 +104,11 @@ export type Database = {
           customer_phone: string | null
           customer_name: string | null
           interested_service: string | null
+          preferred_bhk: string | null
+          preferred_location: string | null
+          property_type: string | null
+          timeline: string | null
+          possession_type: string | null
           requirements: string | null
           preferred_appointment_time: string | null
           last_intent: string | null
@@ -160,6 +166,21 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['escalations']['Row']>
         Relationships: []
       }
+      response_style_profiles: {
+        Row: {
+          id: string
+          business_id: string
+          approved: boolean
+          style_notes: string | null
+          example_customer: string | null
+          example_reply: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: Partial<Database['public']['Tables']['response_style_profiles']['Row']>
+        Update: Partial<Database['public']['Tables']['response_style_profiles']['Row']>
+        Relationships: []
+      }
       internal_notes: {
         Row: {
           id: string
@@ -192,6 +213,18 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      crm_record_connection_check: {
+        Args: { p_actor_id: string; p_business_id: string; p_phone_number_id: string; p_waba_id: string }
+        Returns: boolean
+      }
+      crm_manage_client: {
+        Args: { p_actor_id: string; p_action: string; p_business_id?: string; p_payload: Json }
+        Returns: Json
+      }
+      crm_save_ai_settings: {
+        Args: { p_actor_id: string; p_business_id: string; p_settings: Json; p_system_prompt?: string; p_style?: Json }
+        Returns: Json
+      }
       get_my_business_ids: {
         Args: Record<string, never>
         Returns: string[]

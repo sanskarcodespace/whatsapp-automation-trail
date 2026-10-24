@@ -17,12 +17,9 @@ export default async function ExportPage() {
     .select('business_id, role')
     .eq('user_id', user.id)
 
-  let businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
-  let businesses: any[] = []
-  if (businessIds.length === 0) {
-    const { data: allBiz } = await serviceClient.from('businesses').select('id, name')
-    businesses = allBiz ?? []
-  } else {
+  const businessIds = (memberships ?? []).map(membership => membership.business_id).filter(Boolean)
+  let businesses: Parameters<typeof ExportClient>[0]['businesses'] = []
+  if (businessIds.length > 0) {
     const { data: bizRows } = await serviceClient.from('businesses').select('id, name').in('id', businessIds)
     businesses = bizRows ?? []
   }

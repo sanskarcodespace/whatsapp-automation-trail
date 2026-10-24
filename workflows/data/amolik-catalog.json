@@ -1,0 +1,99 @@
+{
+  "key": "amolik",
+  "source": "Client-approved implementation brief; prices are indicative, inventory requires consultant verification",
+  "name": "Amolik Group",
+  "profile": "Real estate developer in Faridabad, Delhi NCR since 2015; 10+ years of excellence, 5M+ sq. ft. developed, 8+ signature projects, 1500+ families served.",
+  "head_office": "14/3, Main Mathura Road, Near Mewla Maharajpur Metro Station, Faridabad 121003",
+  "sales_office": "Plaza 81, near DPS School, Sector 81, Faridabad 121002",
+  "phone": "+91 98107 600 32",
+  "email": "info@amolik.com",
+  "hours": "Mon–Sat 10:00 AM – 6:00 PM",
+  "owner_phone": "917250307422",
+  "projects": [
+    {
+      "id": "heights", "name": "Amolik Heights", "aliases": ["Amolik Heights", "Heights"],
+      "category": "residential", "location": "Sector 88, Faridabad", "status": "Completed / handed over",
+      "configurations": [{"bhk": 1, "price": "₹46.10L–₹49.20L"}, {"bhk": 2, "price": "₹62.78L–₹63.42L"}, {"bhk": 3, "price": "₹70L"}],
+      "amenities": ["Gated society", "24/7 security", "Power backup", "Lifts", "Clubhouse"],
+      "description": "Completed residential apartments. Unit-level availability requires verification."
+    },
+    {
+      "id": "park", "name": "Amolik Park", "aliases": ["Amolik Park"],
+      "category": "residential", "location": "Sector 88, Faridabad", "status": "Ongoing / under construction",
+      "configurations": [{"bhk": 1, "price": "approximately ₹30L–₹33.86L"}, {"bhk": 3, "price": "approximately ₹65L"}],
+      "amenities": [], "description": "Under-construction residential apartments."
+    },
+    {
+      "id": "sankalp", "name": "Amolik Sankalp", "aliases": ["Amolik Sankalp", "Sankalp"],
+      "category": "residential", "location": "Sector 85, Faridabad", "status": "Completed",
+      "configurations": [{"bhk": 1, "price": "₹40L–₹42.59L"}, {"bhk": 3, "price": "₹80.29L"}],
+      "amenities": [], "description": "Residential apartments near BPTP bridge."
+    },
+    {
+      "id": "residency", "name": "Amolik Residency", "aliases": ["Amolik Residency", "Residency"],
+      "category": "residential", "location": "Sector 86, Faridabad", "status": "Completed",
+      "configurations": [{"bhk": 3, "price": "from ₹1.50 Cr"}],
+      "amenities": [], "description": "Luxury 3 BHK independent floors."
+    },
+    {
+      "id": "aarvista", "name": "Aarvista", "aliases": ["Aarvista"],
+      "category": "senior_living", "location": "Sector 86, Faridabad", "status": "Ongoing",
+      "configurations": [], "amenities": [], "description": "Dedicated senior living and retirement community."
+    },
+    {
+      "id": "neoliv", "name": "Neoliv Golf One", "aliases": ["Neoliv Golf One", "Golf One", "Neoliv"],
+      "category": "plots", "location": "Sectors 98 and 99A, Faridabad", "status": "Ongoing",
+      "configurations": [], "amenities": [], "description": "Luxury golf-themed plotted community."
+    },
+    {
+      "id": "concordia", "name": "Amolik Concordia Living", "aliases": ["Amolik Concordia Living", "Concordia Living"],
+      "category": "plots", "location": "Sector 97, Faridabad", "status": "Ongoing",
+      "configurations": [], "price": "from approximately ₹69.97L", "amenities": [], "description": "Plots from 538 to 3039+ sq. ft."
+    },
+    {
+      "id": "concordia_extension", "name": "Concordia Living-I & Extension", "aliases": ["Concordia Living-I", "Concordia Living I", "Concordia Living-1", "Concordia Living Extension", "Concordia Extension"],
+      "category": "plots", "location": "Sector 97, Faridabad", "status": "Ongoing",
+      "configurations": [], "amenities": [], "description": "Premium plotted development, including the extension."
+    },
+    {
+      "id": "blossom", "name": "Amolik Blossom Woods", "aliases": ["Amolik Blossom Woods", "Blossom Woods"],
+      "category": "plots", "location": "Sector 97, Faridabad", "status": "Ongoing",
+      "configurations": [], "amenities": [], "description": "Nature-inspired plotted community."
+    },
+    {
+      "id": "aster", "name": "Amolik Aster Woods", "aliases": ["Amolik Aster Woods", "Aster Woods"],
+      "category": "plots", "location": "Sector 98, Faridabad", "status": "Completed",
+      "configurations": [], "amenities": [], "description": "Premium plotted development."
+    },
+    {
+      "id": "107th_avenue", "name": "107th Avenue", "aliases": ["107th Avenue", "107 Avenue"],
+      "category": "plots", "location": "Sector 107, Faridabad", "status": "Ongoing",
+      "configurations": [], "amenities": [], "description": "Plotted development."
+    },
+    {
+      "id": "upcoming_plotted", "name": "Upcoming Plotted", "aliases": ["Upcoming Plotted", "109A/110A", "109A", "110A"],
+      "category": "plots", "location": "Sectors 109A/110A, 98 and 109, Faridabad", "status": "Upcoming",
+      "configurations": [], "amenities": [], "description": "25-acre township in Sectors 109A/110A; upcoming plotted developments in Sectors 98 and 109."
+    },
+    {
+      "id": "plaza81", "name": "Amolik Plaza 81", "aliases": ["Amolik Plaza 81", "Plaza 81"],
+      "category": "commercial", "location": "Sector 81, Faridabad", "status": "Ongoing",
+      "configurations": [], "amenities": [], "description": "Commercial SCO development."
+    },
+    {
+      "id": "vibrant82", "name": "Amolik Vibrant 82", "aliases": ["Amolik Vibrant 82", "Vibrant 82"],
+      "category": "commercial", "location": "Sector 82, Faridabad", "status": "Completed",
+      "configurations": [], "amenities": [], "description": "Commercial SCO development."
+    },
+    {
+      "id": "plaza88", "name": "Amolik Plaza 88", "aliases": ["Amolik Plaza 88", "Plaza 88"],
+      "category": "commercial", "location": "Sector 88, Faridabad", "status": "Ongoing",
+      "configurations": [], "amenities": [], "description": "Commercial SCO development."
+    },
+    {
+      "id": "city_life", "name": "City Life Mall", "aliases": ["City Life Mall", "City Life"],
+      "category": "commercial", "location": "Sector 85, Faridabad", "status": "Completed",
+      "configurations": [], "amenities": [], "description": "Shopping and lifestyle mall."
+    }
+  ]
+}

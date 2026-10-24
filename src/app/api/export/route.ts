@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { getBusinessAccess, isRecord } from '@/lib/business-access'
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,22 +13,21 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const business_id = searchParams.get('business_id')
     const format = searchParams.get('format') ?? 'csv'
-    const days = parseInt(searchParams.get('days') ?? '30', 10)
+    const days = Number(searchParams.get('days') ?? '30')
     const direction = searchParams.get('direction') // 'all' | 'inbound' | 'outbound'
 
-    // Verify user membership
-    const { data: membership } = await supabase
-      .from('business_members')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('business_id', business_id || '')
-      .single()
-
-    if (!membership && business_id !== 'all') {
+    if (!business_id || !Number.isInteger(days) || days < 1 || days > 365 ||
+      !['csv', 'json'].includes(format) || (direction && !['all', 'inbound', 'outbound'].includes(direction))) {
+      return NextResponse.json({ error: 'Invalid export filters' }, { status: 400 })
+    }
+    const serviceClient = await createServiceClient()
+    const access = await getBusinessAccess(serviceClient, user.id)
+    if (business_id !== 'all' && !access.canAccess(business_id)) {
       return NextResponse.json({ error: 'Access denied to this business' }, { status: 403 })
     }
-
-    const serviceClient = await createServiceClient()
+    if (business_id === 'all' && access.businessIds.length === 0) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
     const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
 
     let query = serviceClient
@@ -37,16 +37,10 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(5000)
 
-    if (business_id && business_id !== 'all') {
-      // Find phone_number_id for this business to filter
-      const { data: bRow } = await serviceClient
-        .from('businesses')
-        .select('phone_number_id')
-        .eq('id', business_id)
-        .single()
-      if (bRow?.phone_number_id) {
-        query = query.eq('phone_number_id', bRow.phone_number_id)
-      }
+    if (business_id !== 'all') {
+      query = query.eq('business_id', business_id)
+    } else {
+      query = query.in('business_id', access.businessIds)
     }
 
     if (direction && (direction === 'inbound' || direction === 'outbound')) {
@@ -55,7 +49,7 @@ export async function GET(req: NextRequest) {
 
     const { data: messages, error } = await query
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Unable to export messages' }, { status: 500 })
     }
 
     if (format === 'json') {
@@ -84,17 +78,18 @@ export async function GET(req: NextRequest) {
       'Business ID'
     ]
 
-    const escapeCsv = (val: any) => {
+    const escapeCsv = (val: unknown) => {
       if (val === null || val === undefined) return ''
-      const str = String(val)
+      const raw = String(val)
+      const str = /^[\s]*[=+\-@]/.test(raw) ? `'${raw}` : raw
       if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
         return `"${str.replace(/"/g, '""')}"`
       }
       return str
     }
 
-    const rows = (messages ?? []).map((msg: any) => {
-      const meta = typeof msg.metadata === 'object' && msg.metadata ? msg.metadata : {}
+    const rows = (messages ?? []).map(msg => {
+      const meta = isRecord(msg.metadata) ? msg.metadata : {}
       const intent = msg.intent || meta.intent || ''
       const leadStatus = msg.lead_status || meta.lead_status || ''
       const bizId = msg.business_id || meta.business_id || business_id || ''
@@ -106,7 +101,7 @@ export async function GET(req: NextRequest) {
         escapeCsv(msg.direction),
         escapeCsv(msg.customer_phone),
         escapeCsv(msg.customer_name),
-        escapeCsv(msg.body || msg.message_text),
+        escapeCsv(msg.body),
         escapeCsv(msg.status),
         escapeCsv(intent),
         escapeCsv(leadStatus),
@@ -124,7 +119,7 @@ export async function GET(req: NextRequest) {
       },
     })
 
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Unable to export messages' }, { status: 500 })
   }
 }

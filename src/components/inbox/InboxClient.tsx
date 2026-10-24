@@ -1,10 +1,11 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import type { Database } from '@/types/database'
 import {
-  Search, Filter, Bot, User, Send, Loader2, MoreVertical,
-  Phone, Tag, Clock, ChevronRight, AlertTriangle, CheckCircle2,
-  Pause, Play, X, StickyNote, MessageSquare, RefreshCw
+  Search, Filter, Bot, User, Send, Loader2,
+  Phone, Tag, Clock, AlertTriangle, CheckCircle2,
+  Pause, Play, X, StickyNote, MessageSquare
 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatDistanceToNow, format } from 'date-fns'
@@ -25,18 +26,7 @@ type Conversation = {
   assigned_agent_id: string | null
 }
 
-type Message = {
-  id: string
-  wa_message_id: string | null
-  direction: 'inbound' | 'outbound'
-  body: string | null
-  status: string | null
-  customer_name: string | null
-  agent_id: string | null
-  is_manual_reply: boolean
-  created_at: string
-  metadata: any
-}
+type Message = Database['public']['Tables']['wa_messages']['Row']
 
 const FILTERS = ['all', 'unread', 'human', 'ai', 'open', 'closed'] as const
 type Filter = typeof FILTERS[number]
@@ -46,7 +36,6 @@ export function InboxClient({
   initialMessages = [],
   businessIds,
   userId,
-  userRole,
 }: {
   initialConversations: Conversation[]
   initialMessages?: Message[]
@@ -66,24 +55,22 @@ export function InboxClient({
   const [showNote, setShowNote] = useState(false)
   const [aiToggling, setAiToggling] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
+  const selectedRef = useRef(selected)
+  useEffect(() => { selectedRef.current = selected }, [selected])
 
   const loadMessages = useCallback(async (conv: Conversation) => {
-    if (!conv?.session_id) return
+    if (!conv?.session_id || !conv.business_id) return
     setMsgLoading(true)
     try {
-      const res = await fetch(`/api/messages?session_id=${encodeURIComponent(conv.session_id)}`)
+      const res = await fetch(`/api/messages?session_id=${encodeURIComponent(conv.session_id)}&business_id=${encodeURIComponent(conv.business_id)}`)
       if (res.ok) {
         const json = await res.json()
-        setMessages(json.messages ?? [])
+        if (selectedRef.current?.session_id === conv.session_id && selectedRef.current?.business_id === conv.business_id) {
+          setMessages(json.messages ?? [])
+        }
       } else {
-        const { data } = await supabase
-          .from('wa_messages')
-          .select('*')
-          .eq('session_id', conv.session_id)
-          .order('created_at', { ascending: true })
-          .limit(100)
-        setMessages(data ?? [])
+        toast.error('Unable to load this conversation')
       }
     } catch {
       // ignore
@@ -97,29 +84,31 @@ export function InboxClient({
       await supabase
         .from('conversations')
         .update({ unread_count: 0 })
+        .eq('business_id', conv.business_id)
         .eq('session_id', conv.session_id)
     }
   }, [supabase])
-
-  // Initial load for first conversation if initialMessages wasn't passed or needs refresh
-  useEffect(() => {
-    if (initialConversations[0] && initialMessages.length === 0) {
-      loadMessages(initialConversations[0])
-    }
-  }, [initialConversations, initialMessages.length, loadMessages])
 
   // Realtime subscription
   useEffect(() => {
     const channel = supabase
       .channel('inbox-realtime')
-      .on('postgres_changes', {
+      .on<Conversation>('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'conversations',
-      }, (payload: any) => {
+      }, payload => {
+        if (payload.eventType === 'DELETE') {
+          setConvs(previous => previous.filter(conversation => conversation.session_id !== payload.old.session_id || conversation.business_id !== payload.old.business_id))
+          return
+        }
+        if (!businessIds.includes(payload.new.business_id ?? '')) return
+        const current = selectedRef.current
+        if (current?.session_id === payload.new.session_id && current?.business_id === payload.new.business_id) {
+          setSelected(previous => previous ? { ...previous, ...payload.new } : previous)
+        }
         setConvs(prev => {
-          const idx = prev.findIndex(c => c.session_id === payload.new?.session_id)
-          if (payload.eventType === 'DELETE') return prev.filter(c => c.session_id !== payload.old?.session_id)
+          const idx = prev.findIndex(c => c.session_id === payload.new?.session_id && c.business_id === payload.new?.business_id)
           if (idx >= 0) {
             const updated = [...prev]
             updated[idx] = { ...updated[idx], ...payload.new }
@@ -130,12 +119,13 @@ export function InboxClient({
           return [payload.new, ...prev]
         })
       })
-      .on('postgres_changes', {
+      .on<Message>('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'wa_messages',
-      }, (payload: any) => {
-        if (selected && payload.new?.session_id === selected.session_id) {
+      }, payload => {
+        const current = selectedRef.current
+        if (current && payload.new.session_id === current.session_id && payload.new.business_id === current.business_id) {
           setMessages(prev => {
             if (prev.some(m => m.id === payload.new?.id || (m.wa_message_id && m.wa_message_id === payload.new?.wa_message_id))) return prev
             return [...prev, payload.new]
@@ -146,16 +136,16 @@ export function InboxClient({
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [selected?.session_id, supabase])
+  }, [businessIds, supabase])
 
   // Periodic fallback sync (every 3.5s) to guarantee real-time updates
   useEffect(() => {
-    if (!selected?.session_id) return
+    if (!selected?.session_id || !selected.business_id) return
     const interval = setInterval(async () => {
       // 1. Fetch latest messages for active conversation
       try {
-        const res = await fetch(`/api/messages?session_id=${encodeURIComponent(selected.session_id)}`)
-        if (res.ok) {
+        const res = await fetch(`/api/messages?session_id=${encodeURIComponent(selected.session_id)}&business_id=${encodeURIComponent(selected.business_id!)}`)
+        if (res.ok && selectedRef.current?.session_id === selected.session_id && selectedRef.current?.business_id === selected.business_id) {
           const json = await res.json()
           const latestMsgs = json.messages ?? []
           if (latestMsgs.length > 0) {
@@ -183,15 +173,18 @@ export function InboxClient({
 
         if (latestConvs && latestConvs.length > 0) {
           setConvs(latestConvs)
+          setSelected(previous => latestConvs.find(conversation => conversation.session_id === previous?.session_id && conversation.business_id === previous?.business_id) ?? previous)
         }
       }
     }, 3500)
 
     return () => clearInterval(interval)
-  }, [selected?.session_id, businessIds, supabase])
+  }, [selected?.session_id, selected?.business_id, businessIds, supabase])
 
   const selectConv = (conv: Conversation) => {
+    selectedRef.current = conv
     setSelected(conv)
+    setMessages([])
     setReplyText('')
     setNoteText('')
     setShowNote(false)
@@ -212,18 +205,22 @@ export function InboxClient({
           session_id: selected.session_id,
           business_id: selected.business_id,
           customer_phone: selected.customer_phone,
-          phone_number_id: selected.business_id, // resolved server-side
           message: text,
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Send failed')
-      toast.success('Message sent')
+      if (data.error) toast.error(data.error)
+      else toast.success('Message sent')
+      setSelected(prev => prev?.session_id === selected.session_id && prev?.business_id === selected.business_id
+        ? { ...prev, human_takeover: true, status: 'human' } : prev)
+      setConvs(prev => prev.map(conv => conv.session_id === selected.session_id && conv.business_id === selected.business_id
+        ? { ...conv, human_takeover: true, status: 'human' } : conv))
       if (selected) {
         loadMessages(selected)
       }
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Unable to send message')
       setReplyText(text) // restore on failure
     }
     setSending(false)
@@ -239,6 +236,7 @@ export function InboxClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: selected.session_id,
+          business_id: selected.business_id,
           human_takeover: newState,
         }),
       })
@@ -246,10 +244,12 @@ export function InboxClient({
       if (!res.ok) throw new Error(data.error || 'Failed to update AI status')
       const label = newState ? 'AI paused — human takeover active' : 'AI resumed'
       toast.success(label)
-      setSelected(prev => prev ? { ...prev, human_takeover: newState, status: 'open' } : prev)
-      setConvs(prev => prev.map(c => c.session_id === selected.session_id ? { ...c, human_takeover: newState, status: 'open' } : c))
-    } catch (err: any) {
-      toast.error('Failed to update AI status: ' + err.message)
+      setSelected(prev => prev?.session_id === selected.session_id && prev?.business_id === selected.business_id
+        ? { ...prev, human_takeover: newState, status: newState ? 'human' : 'bot' } : prev)
+      setConvs(prev => prev.map(c => c.session_id === selected.session_id && c.business_id === selected.business_id
+        ? { ...c, human_takeover: newState, status: newState ? 'human' : 'bot' } : c))
+    } catch (err) {
+      toast.error('Failed to update AI status: ' + (err instanceof Error ? err.message : 'Unknown error'))
     } finally {
       setAiToggling(false)
     }

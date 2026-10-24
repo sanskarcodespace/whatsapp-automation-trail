@@ -17,11 +17,7 @@ export default async function LeadsPage() {
     .select('business_id, role')
     .eq('user_id', user.id)
 
-  let businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
-  if (businessIds.length === 0) {
-    const { data: allBiz } = await serviceClient.from('businesses').select('id')
-    businessIds = (allBiz ?? []).map((b: any) => b.id)
-  }
+  const businessIds = (memberships ?? []).map(membership => membership.business_id).filter(Boolean)
 
   const { data: leads } = await serviceClient
     .from('leads')

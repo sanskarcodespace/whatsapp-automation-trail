@@ -13,6 +13,7 @@ type Lead = {
   customer_phone: string | null
   customer_name: string | null
   interested_service: string | null
+  preferred_bhk: string | null
   requirements: string | null
   preferred_appointment_time: string | null
   status: string | null
@@ -24,15 +25,18 @@ type Lead = {
   created_at: string
 }
 
-const STAGES = ['new', 'interested', 'qualified', 'appointment', 'won', 'lost', 'follow_up_required']
+const STAGES = ['new', 'contacted', 'interested', 'qualified', 'appointment', 'won', 'converted', 'lost', 'closed', 'follow_up_required']
 
 const stageColor: Record<string, string> = {
   new:                 'badge-gray',
+  contacted:           'badge-blue',
   interested:          'badge-blue',
   qualified:           'badge-green',
   appointment:         'badge-purple',
   won:                 'badge-green',
+  converted:           'badge-green',
   lost:                'badge-red',
+  closed:              'badge-gray',
   follow_up_required:  'badge-yellow',
 }
 
@@ -69,9 +73,20 @@ export function LeadsClient({ initialLeads, businessIds, userId }: {
   async function updateLead() {
     if (!selected) return
     setSaving(true)
+    const updates = {
+      interested_service: editData.interested_service ?? null,
+      preferred_bhk: editData.preferred_bhk ?? null,
+      budget: editData.budget ?? null,
+      location: editData.location ?? null,
+      requirements: editData.requirements ?? null,
+      follow_up_date: editData.follow_up_date || null,
+      notes: editData.notes ?? null,
+      status: editData.status ?? selected.status,
+      updated_at: new Date().toISOString(),
+    }
     const { error } = await supabase
       .from('leads')
-      .update({ ...editData, updated_at: new Date().toISOString() } as any)
+      .update(updates)
       .eq('customer_phone', selected.customer_phone!)
       .eq('business_id', selected.business_id!)
     if (error) toast.error('Failed to update lead')
@@ -90,7 +105,7 @@ export function LeadsClient({ initialLeads, businessIds, userId }: {
   async function updateStage(lead: Lead, newStage: string) {
     const { error } = await supabase
       .from('leads')
-      .update({ status: newStage } as any)
+      .update({ status: newStage })
       .eq('customer_phone', lead.customer_phone!)
       .eq('business_id', lead.business_id!)
     if (error) toast.error('Failed to update stage')
@@ -228,6 +243,10 @@ export function LeadsClient({ initialLeads, businessIds, userId }: {
             <Field label="Budget" value={editing ? undefined : selected.budget} icon={<DollarSign className="w-3 h-3" />}>
               {editing && <input value={editData.budget ?? ''} onChange={e => setEditData(p => ({ ...p, budget: e.target.value }))} className="input text-xs mt-1" placeholder="Budget range…" />}
             </Field>
+            <Field label="Preferred BHK" value={editing ? undefined : selected.preferred_bhk}>
+              {editing && <input value={editData.preferred_bhk ?? ''} onChange={event => setEditData(previous => ({ ...previous, preferred_bhk: event.target.value }))} className="input text-xs mt-1" placeholder="e.g. 2 BHK" />}
+            </Field>
+            <Field label="Requested Visit Time" value={selected.preferred_appointment_time} />
             <Field label="Location" value={editing ? undefined : selected.location} icon={<MapPin className="w-3 h-3" />}>
               {editing && <input value={editData.location ?? ''} onChange={e => setEditData(p => ({ ...p, location: e.target.value }))} className="input text-xs mt-1" placeholder="Location…" />}
             </Field>

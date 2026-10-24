@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test tests/ingestion.test.js tests/conversation-policy.test.js tests/api_security.test.js tests/workflow.test.js",
+    "test:db": "node --test tests/database.test.js",
+    "workflow:check": "node scripts/build-workflow.js --check",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

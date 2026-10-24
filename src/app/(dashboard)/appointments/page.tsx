@@ -17,18 +17,14 @@ export default async function AppointmentsPage() {
     .select('business_id, role')
     .eq('user_id', user.id)
 
-  let businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
-  let businesses: any[] = []
-  if (businessIds.length === 0) {
-    const { data: allBiz } = await serviceClient.from('businesses').select('id, name')
-    businesses = allBiz ?? []
-    businessIds = businesses.map(b => b.id)
-  } else {
+  const businessIds = (memberships ?? []).map(membership => membership.business_id).filter(Boolean)
+  let businesses: Parameters<typeof AppointmentsClient>[0]['businesses'] = []
+  if (businessIds.length > 0) {
     const { data: bizRows } = await serviceClient.from('businesses').select('id, name').in('id', businessIds)
     businesses = bizRows ?? []
   }
 
-  const userRole = memberships?.[0]?.role ?? 'platform_admin'
+  const userRole = memberships?.[0]?.role ?? 'agent'
 
   let appointments: Appointment[] = []
   if (businessIds.length > 0) {

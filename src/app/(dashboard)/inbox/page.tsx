@@ -17,13 +17,9 @@ export default async function InboxPage() {
     .select('business_id, role')
     .eq('user_id', user.id)
 
-  let businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
-  if (businessIds.length === 0) {
-    const { data: allBiz } = await serviceClient.from('businesses').select('id')
-    businessIds = (allBiz ?? []).map((b: any) => b.id)
-  }
+  const businessIds = (memberships ?? []).map(membership => membership.business_id).filter(Boolean)
 
-  const userRole = memberships?.[0]?.role ?? 'platform_admin'
+  const userRole = memberships?.[0]?.role ?? 'agent'
 
   // Load initial conversations
   const { data: conversations } = await serviceClient
@@ -35,15 +31,16 @@ export default async function InboxPage() {
 
   // Load initial messages for the first conversation
   const firstSessionId = conversations?.[0]?.session_id
-  let initialMessages: any[] = []
+  let initialMessages: Parameters<typeof InboxClient>[0]['initialMessages'] = []
   if (firstSessionId) {
     const { data: msgRows } = await serviceClient
       .from('wa_messages')
       .select('*')
+      .eq('business_id', conversations![0].business_id!)
       .eq('session_id', firstSessionId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(100)
-    initialMessages = msgRows ?? []
+    initialMessages = (msgRows ?? []).reverse()
   }
 
   return (

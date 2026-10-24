@@ -1,6 +1,7 @@
 const fs = require('fs');
 
-const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMjZkOGY5Mi1jMzQ5LTQ1NWUtOWQ2MS01MWU3NjczYTY1NzUiLCJpc3MiOiJuOG4iLCJqdGkiOiIyNDQ5OTlkYS0yZmIzLTRjY2UtOGI4Ny05OGM3OTlmMDgzNzkiLCJpYXQiOjE3OTI1MTE4MzQsImF1ZCI6Im1jcC1zZXJ2ZXItYXBpIn0.G64W-Qbu2nr0dOivFmXOmDItxTNM_IJWamdwjDWLCFk';
+const token = process.env.N8N_API_KEY;
+if (!token) throw new Error("N8N_API_KEY must be supplied through the environment");
 
 // Read current live workflow
 const wf = JSON.parse(fs.readFileSync('workflows/whatsapp_multi_client_ai.json', 'utf8'));

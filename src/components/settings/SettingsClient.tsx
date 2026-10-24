@@ -1,13 +1,10 @@
 'use client'
+
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import {
-  Settings, Building2, Users, Plus, Shield, Phone,
-  CheckCircle2, AlertCircle, Clock, Trash2, Key, Globe,
-  Send, Loader2, UserPlus, RefreshCw
-} from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { Building2, Plus, Users, ShieldCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
-import clsx from 'clsx'
 
 export type BusinessRecord = {
   id: string
@@ -27,517 +24,187 @@ export type TeamMember = {
   user_id: string
   role: 'platform_admin' | 'owner' | 'manager' | 'agent'
   created_at: string
-  user_email?: string
 }
 
 type Props = {
   businesses: BusinessRecord[]
   teamMembers: TeamMember[]
   userId: string
-  userRole: string
+  canProvision: boolean
 }
 
-export function SettingsClient({ businesses: initialBiz, teamMembers: initialMembers, userId, userRole }: Props) {
-  const [businesses, setBusinesses] = useState<BusinessRecord[]>(initialBiz)
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(initialMembers)
-  const [selectedBizId, setSelectedBizId] = useState(businesses[0]?.id || '')
-  const [saving, setSaving] = useState(false)
-  const [testingSend, setTestingSend] = useState(false)
-  const [testPhone, setTestPhone] = useState('')
+const emptyClient = { name: '', phone_number_id: '', waba_id: '', timezone: 'Asia/Kolkata', owner_phone: '' }
 
-  // New business modal
-  const [showNewBizModal, setShowNewBizModal] = useState(false)
-  const [newBizName, setNewBizName] = useState('')
-  const [newBizPhoneId, setNewBizPhoneId] = useState('')
-  const [newBizWabaId, setNewBizWabaId] = useState('')
-  const [creatingBiz, setCreatingBiz] = useState(false)
+function ClientPanel({ business, members, userId, onSaved }: { business: BusinessRecord; members: TeamMember[]; userId: string; onSaved: (business: BusinessRecord) => void }) {
+  const router = useRouter()
+  const [name, setName] = useState(business.name)
+  const [timezone, setTimezone] = useState(business.timezone || 'Asia/Kolkata')
+  const [phoneId, setPhoneId] = useState(business.phone_number_id ?? '')
+  const [wabaId, setWabaId] = useState(business.waba_id ?? '')
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState('agent')
+  const [busy, setBusy] = useState(false)
+  const memberRole = members.find(member => member.user_id === userId)?.role
+  const canManage = ['platform_admin', 'owner', 'manager'].includes(memberRole ?? '')
+  const canManageMembers = ['platform_admin', 'owner'].includes(memberRole ?? '')
+  const canCorrectIdentity = memberRole === 'platform_admin' && !business.is_active && business.connection_status !== 'connected'
 
-  // Team invite modal
-  const [showInviteModal, setShowInviteModal] = useState(false)
-  const [inviteUserId, setInviteUserId] = useState('')
-  const [inviteRole, setInviteRole] = useState<'owner' | 'manager' | 'agent'>('agent')
-  const [inviting, setInviting] = useState(false)
-
-  const supabase = createClient()
-  const activeBiz = businesses.find(b => b.id === selectedBizId) || businesses[0]
-
-  const [form, setForm] = useState({
-    name: activeBiz?.name || '',
-    phone_number_id: activeBiz?.phone_number_id || '',
-    waba_id: activeBiz?.waba_id || '',
-    timezone: activeBiz?.timezone || 'Asia/Kolkata',
-    is_active: activeBiz?.is_active ?? false,
-    connection_status: activeBiz?.connection_status || 'pending',
-  })
-
-  function handleSelectBiz(id: string) {
-    setSelectedBizId(id)
-    const b = businesses.find(x => x.id === id)
-    if (b) {
-      setForm({
-        name: b.name,
-        phone_number_id: b.phone_number_id || '',
-        waba_id: b.waba_id || '',
-        timezone: b.timezone || 'Asia/Kolkata',
-        is_active: b.is_active,
-        connection_status: b.connection_status,
-      })
-    }
-  }
-
-  async function handleSaveBiz() {
-    if (!selectedBizId) return
-    setSaving(true)
+  async function mutate(method: string, payload: Record<string, unknown>) {
+    setBusy(true)
     try {
-      const updates: any = {
-        name: form.name,
-        phone_number_id: form.phone_number_id || null,
-        waba_id: form.waba_id || null,
-        timezone: form.timezone,
-        is_active: form.is_active,
-        connection_status: form.connection_status,
-        updated_at: new Date().toISOString(),
-      }
-
-      const { error } = await (supabase.from('businesses') as any)
-        .update(updates)
-        .eq('id', selectedBizId)
-
-      if (error) throw error
-
-      setBusinesses(prev => prev.map(b => b.id === selectedBizId ? { ...b, ...updates } : b))
-      toast.success('Business settings saved')
-    } catch (err: any) {
-      toast.error(`Save failed: ${err.message}`)
+      const response = await fetch('/api/business/clients', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ business_id: business.id, ...payload }) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Unable to save')
+      if (method === 'PATCH') onSaved(result.result)
+      toast.success(method === 'PATCH' ? 'Client updated' : 'Team access updated')
+      setEmail('')
+      router.refresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to save')
     } finally {
-      setSaving(false)
+      setBusy(false)
     }
   }
 
-  async function handleCreateBusiness(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newBizName.trim()) return
-    setCreatingBiz(true)
-
+  async function verifyConnection() {
+    setBusy(true)
     try {
-      const bizId = `biz_${Date.now()}`
-      const newBizData: any = {
-        id: bizId,
-        name: newBizName.trim(),
-        phone_number_id: newBizPhoneId.trim() || null,
-        waba_id: newBizWabaId.trim() || null,
-        is_active: true,
-        connection_status: newBizPhoneId ? 'connected' : 'pending',
-        timezone: 'Asia/Kolkata',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-
-      const { error: bizErr } = await (supabase.from('businesses') as any)
-        .insert(newBizData)
-
-      if (bizErr) throw bizErr
-
-      // Add current user as owner in business_members
-      const { error: memberErr } = await (supabase.from('business_members') as any)
-        .insert({
-          business_id: bizId,
-          user_id: userId,
-          role: 'owner',
-          created_at: new Date().toISOString(),
-        })
-
-      if (memberErr) throw memberErr
-
-      setBusinesses(prev => [...prev, newBizData])
-      setSelectedBizId(bizId)
-      setForm({
-        name: newBizData.name,
-        phone_number_id: newBizData.phone_number_id || '',
-        waba_id: newBizData.waba_id || '',
-        timezone: newBizData.timezone,
-        is_active: newBizData.is_active,
-        connection_status: newBizData.connection_status,
-      })
-
-      setShowNewBizModal(false)
-      setNewBizName('')
-      setNewBizPhoneId('')
-      setNewBizWabaId('')
-      toast.success(`Client business "${newBizData.name}" created!`)
-    } catch (err: any) {
-      toast.error(`Creation failed: ${err.message}`)
+      const response = await fetch('/api/business/connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ business_id: business.id }) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Verification failed')
+      onSaved({ ...business, connection_status: 'connected' })
+      toast.success('Meta access and app subscription verified. Send a test chat before customer rollout.')
+      router.refresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to verify connection')
     } finally {
-      setCreatingBiz(false)
+      setBusy(false)
     }
   }
-
-  async function handleAddMember(e: React.FormEvent) {
-    e.preventDefault()
-    if (!inviteUserId.trim() || !selectedBizId) return
-    setInviting(true)
-
-    try {
-      const payload: any = {
-        business_id: selectedBizId,
-        user_id: inviteUserId.trim(),
-        role: inviteRole,
-        created_at: new Date().toISOString(),
-      }
-
-      const { data, error } = await (supabase.from('business_members') as any)
-        .insert(payload)
-        .select()
-        .single()
-
-      if (error) throw error
-
-      setTeamMembers(prev => [...prev, data])
-      setShowInviteModal(false)
-      setInviteUserId('')
-      toast.success('Team member added to business')
-    } catch (err: any) {
-      toast.error(`Member add failed: ${err.message}`)
-    } finally {
-      setInviting(false)
-    }
-  }
-
-  const currentMembers = teamMembers.filter(m => m.business_id === selectedBizId)
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Settings className="w-6 h-6 text-green-400" />
-            Client Business & Tenant Settings
-          </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Manage your client businesses, WhatsApp Cloud API phone numbers, and team member permissions.
-          </p>
+    <div className="grid lg:grid-cols-3 gap-6">
+      <section className="lg:col-span-2 card p-6 space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-semibold text-white">{business.name}</h2>
+          <span className="text-xs text-slate-300">{business.is_active ? 'Automation active' : 'Automation paused'} · Connection: {business.connection_status}</span>
         </div>
-
-        <button
-          onClick={() => setShowNewBizModal(true)}
-          className="btn-primary text-xs px-3 py-2 flex items-center gap-1.5 self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" /> Add Client Business
-        </button>
-      </div>
-
-      {/* Business selector pills */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-[rgb(var(--border))]">
-        {businesses.map(b => (
-          <button
-            key={b.id}
-            onClick={() => handleSelectBiz(b.id)}
-            className={clsx(
-              'px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 shrink-0 border transition-all',
-              selectedBizId === b.id
-                ? 'bg-green-600/20 border-green-500/50 text-white'
-                : 'bg-[rgb(var(--bg-secondary))] border-[rgb(var(--border))] text-slate-400 hover:text-slate-200'
-            )}
-          >
-            <Building2 className="w-3.5 h-3.5" />
-            {b.name}
-            <span className={clsx(
-              'w-2 h-2 rounded-full',
-              b.connection_status === 'connected' ? 'bg-green-400' : 'bg-yellow-400'
-            )} />
-          </button>
-        ))}
-      </div>
-
-      {activeBiz && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left 2 Cols: Business Profile & WhatsApp Phone */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="card p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-green-400" />
-                  Business Profile & WhatsApp Numbers
-                </h2>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">Status:</span>
-                  <select
-                    value={form.connection_status}
-                    onChange={e => setForm({ ...form, connection_status: e.target.value as any })}
-                    className="input text-xs py-1 px-2"
-                  >
-                    <option value="connected">Connected</option>
-                    <option value="pending">Pending</option>
-                    <option value="error">Error</option>
-                    <option value="disconnected">Disconnected</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-4 text-xs">
-                <div>
-                  <label className="text-slate-300 font-medium block mb-1">Business Name</label>
-                  <input
-                    type="text"
-                    value={form.name}
-                    onChange={e => setForm({ ...form, name: e.target.value })}
-                    className="input w-full text-xs"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-slate-300 font-medium block mb-1">
-                      Meta WhatsApp Phone Number ID
-                    </label>
-                    <input
-                      type="text"
-                      value={form.phone_number_id}
-                      onChange={e => setForm({ ...form, phone_number_id: e.target.value })}
-                      placeholder="e.g. 102938475612345"
-                      className="input w-full font-mono text-xs"
-                    />
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      From Meta App Dashboard → WhatsApp → API Setup.
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="text-slate-300 font-medium block mb-1">
-                      Meta WABA ID (WhatsApp Business Account)
-                    </label>
-                    <input
-                      type="text"
-                      value={form.waba_id}
-                      onChange={e => setForm({ ...form, waba_id: e.target.value })}
-                      placeholder="e.g. 987654321012345"
-                      className="input w-full font-mono text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-slate-300 font-medium block mb-1">Timezone</label>
-                    <select
-                      value={form.timezone}
-                      onChange={e => setForm({ ...form, timezone: e.target.value })}
-                      className="input w-full text-xs"
-                    >
-                      <option value="Asia/Kolkata">Asia/Kolkata (IST +5:30)</option>
-                      <option value="UTC">UTC (+0:00)</option>
-                      <option value="America/New_York">America/New_York (EST)</option>
-                      <option value="Europe/London">Europe/London (GMT)</option>
-                      <option value="Asia/Dubai">Asia/Dubai (GST +4:00)</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-center gap-3 pt-4">
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={form.is_active}
-                        onChange={e => setForm({ ...form, is_active: e.target.checked })}
-                        className="w-4 h-4 rounded border-slate-700 text-green-500 bg-slate-900 focus:ring-green-500"
-                      />
-                      <span className="text-xs font-medium text-slate-200">
-                        Enable WhatsApp AI Automation for this business
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end pt-3 border-t border-[rgb(var(--border))]">
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={handleSaveBiz}
-                  className="btn-primary text-xs px-4 py-2"
-                >
-                  {saving ? 'Saving...' : 'Save Business Settings'}
-                </button>
-              </div>
-            </div>
+        <fieldset disabled={busy || !canManage} className="space-y-4 disabled:opacity-60">
+          <label className="block text-xs text-slate-300 space-y-1">Business name
+            <input className="input w-full" value={name} maxLength={160} onChange={event => setName(event.target.value)} />
+          </label>
+          <label className="block text-xs text-slate-300 space-y-1">Timezone (IANA)
+            <input className="input w-full" value={timezone} onChange={event => setTimezone(event.target.value)} placeholder="Asia/Kolkata" />
+          </label>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <label className="text-xs text-slate-300 space-y-1">Meta phone number ID
+              <input className="input w-full font-mono" readOnly={!canCorrectIdentity} value={phoneId} onChange={event => setPhoneId(event.target.value)} />
+            </label>
+            <label className="text-xs text-slate-300 space-y-1">WhatsApp Business Account ID
+              <input className="input w-full font-mono" readOnly={!canCorrectIdentity} value={wabaId} onChange={event => setWabaId(event.target.value)} />
+            </label>
           </div>
-
-          {/* Right Col: Team Members & Access */}
-          <div className="space-y-6">
-            <div className="card p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Users className="w-4 h-4 text-blue-400" />
-                  Team Members
-                </h2>
-                <button
-                  onClick={() => setShowInviteModal(true)}
-                  className="text-xs text-green-400 hover:text-green-300 flex items-center gap-1 font-medium"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add
-                </button>
-              </div>
-
-              <div className="space-y-2 text-xs">
-                {currentMembers.length === 0 ? (
-                  <div className="text-slate-500 text-center py-4">
-                    No explicit member records found for this business.
-                  </div>
-                ) : (
-                  currentMembers.map(m => (
-                    <div
-                      key={m.id}
-                      className="p-2.5 rounded-lg bg-[rgb(var(--bg-secondary))] border border-[rgb(var(--border))] flex items-center justify-between gap-2"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-xs font-mono text-slate-300 truncate">
-                          {m.user_id === userId ? 'You (Current User)' : m.user_id.slice(0, 12) + '...'}
-                        </div>
-                        <div className="text-[10px] text-slate-500 capitalize">Role: {m.role}</div>
-                      </div>
-                      <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700 capitalize font-medium">
-                        {m.role}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Tenant Isolation Info Card */}
-            <div className="p-4 bg-slate-900/60 rounded-xl border border-slate-800 text-xs text-slate-400 space-y-2">
-              <div className="flex items-center gap-1.5 font-medium text-slate-200">
-                <Shield className="w-4 h-4 text-green-400" />
-                Tenant Isolation Active
-              </div>
-              <p className="text-[11px] leading-relaxed">
-                Supabase Row Level Security (RLS) ensures that members can only query data matching their assigned <code className="font-mono text-green-300">business_id</code>.
-              </p>
-            </div>
+          <p className="text-xs text-slate-500">Phone identity is locked once used. Only the operator can correct an unused, paused client.</p>
+          <button type="button" className="btn-primary" onClick={() => mutate('PATCH', { name, timezone, ...(phoneId !== business.phone_number_id && canCorrectIdentity ? { phone_number_id: phoneId } : {}), ...(wabaId !== business.waba_id && canCorrectIdentity ? { waba_id: wabaId } : {}) })}>Save profile</button>
+        </fieldset>
+        <div className="border-t border-slate-700 pt-4 space-y-3">
+          <h3 className="text-sm font-medium text-white">WhatsApp onboarding</h3>
+          <ol className="list-decimal pl-4 text-xs text-slate-400 space-y-2">
+            <li>Authorize this client’s number and WABA with the shared Meta app used by your n8n credential. This CRM does not bypass Meta approval.</li>
+            <li>Verify the connection here, then enable automation. Verification checks access and app subscription; it does not send messages.</li>
+            <li>Send a test message from WhatsApp and confirm the correct client’s reply and inbox before going live.</li>
+          </ol>
+          <div className="flex flex-wrap gap-3">
+            <button type="button" className="text-xs border border-slate-600 rounded-lg p-2 text-slate-200 disabled:opacity-40" disabled={!canManage || busy} onClick={verifyConnection}>Verify WhatsApp connection</button>
+            <button type="button" className="text-xs border border-slate-600 rounded-lg p-2 text-slate-200 disabled:opacity-40" disabled={!canManage || busy || (!business.is_active && business.connection_status !== 'connected')} onClick={() => {
+              if (window.confirm(`${business.is_active ? 'Pause' : 'Enable'} automatic replies for ${business.name}? Existing human-takeover chats will stay paused.${business.connection_status !== 'connected' ? ' Re-enabling will require WhatsApp connection verification.' : ''}`)) mutate('PATCH', { is_active: !business.is_active })
+            }}>{business.is_active ? 'Pause automation' : 'Enable automation'}</button>
+            <Link href={`/ai?business=${encodeURIComponent(business.id)}`} className="text-xs text-green-300 p-2">Edit catalog & bot behavior →</Link>
           </div>
         </div>
-      )}
-
-      {/* New Business Modal */}
-      {showNewBizModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <form onSubmit={handleCreateBusiness} className="card max-w-md w-full p-6 space-y-4 border-slate-700 shadow-2xl">
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-green-400" />
-              Onboard New Client Business
-            </h2>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="text-slate-300 block mb-1 font-medium">Client / Company Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={newBizName}
-                  onChange={e => setNewBizName(e.target.value)}
-                  placeholder="e.g. Apex Health Clinic"
-                  className="input w-full"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-300 block mb-1 font-medium">WhatsApp Phone Number ID</label>
-                <input
-                  type="text"
-                  value={newBizPhoneId}
-                  onChange={e => setNewBizPhoneId(e.target.value)}
-                  placeholder="Meta Cloud API Phone Number ID"
-                  className="input w-full font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-300 block mb-1 font-medium">WhatsApp Business Account ID (WABA)</label>
-                <input
-                  type="text"
-                  value={newBizWabaId}
-                  onChange={e => setNewBizWabaId(e.target.value)}
-                  placeholder="WABA ID (Optional)"
-                  className="input w-full font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[rgb(var(--border))]">
-              <button
-                type="button"
-                onClick={() => setShowNewBizModal(false)}
-                className="btn-secondary text-xs"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={creatingBiz}
-                className="btn-primary text-xs"
-              >
-                {creatingBiz ? 'Creating...' : 'Create Business'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Add Member Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <form onSubmit={handleAddMember} className="card max-w-md w-full p-6 space-y-4 border-slate-700 shadow-2xl">
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-blue-400" />
-              Add Team Member to Business
-            </h2>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="text-slate-300 block mb-1 font-medium">Supabase User UUID *</label>
-                <input
-                  type="text"
-                  required
-                  value={inviteUserId}
-                  onChange={e => setInviteUserId(e.target.value)}
-                  placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
-                  className="input w-full font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-300 block mb-1 font-medium">Role</label>
-                <select
-                  value={inviteRole}
-                  onChange={e => setInviteRole(e.target.value as any)}
-                  className="input w-full"
-                >
-                  <option value="agent">Agent (Inbox & Leads only)</option>
-                  <option value="manager">Manager (Inbox, Leads, Appointments, Export)</option>
-                  <option value="owner">Owner (Full Business Control & Settings)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[rgb(var(--border))]">
-              <button
-                type="button"
-                onClick={() => setShowInviteModal(false)}
-                className="btn-secondary text-xs"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={inviting}
-                className="btn-primary text-xs"
-              >
-                {inviting ? 'Adding...' : 'Add Member'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      </section>
+      <section className="card p-6 space-y-4">
+        <h2 className="font-semibold text-white flex items-center gap-2"><Users size={18} /> Client team</h2>
+        <p className="text-xs text-slate-400">Owners manage access; managers edit client settings; agents handle conversations. Assign only people authorized to see this client’s data.</p>
+        {members.map(member => <div key={member.id} className="border border-slate-700 rounded-lg p-3 space-y-1">
+          <p className="text-xs text-slate-200 break-all">{member.user_id === userId ? 'You' : member.user_id}</p>
+          <p className="text-xs text-slate-400 capitalize">{member.role.replaceAll('_', ' ')}</p>
+          {canManageMembers && member.user_id !== userId && member.role !== 'platform_admin' && <button type="button" disabled={busy} className="text-xs text-red-300" onClick={() => {
+            if (window.confirm('Remove this person’s access to this client?')) mutate('DELETE', { user_id: member.user_id })
+          }}>Remove access</button>}
+        </div>)}
+        {canManageMembers && <fieldset disabled={busy} className="space-y-3 border-t border-slate-700 pt-4">
+          <h3 className="text-sm text-white">Assign / change role</h3>
+          <label className="block text-xs text-slate-300 space-y-1">Verified CRM account email
+            <input type="email" className="input w-full" value={email} onChange={event => setEmail(event.target.value)} placeholder="client@example.com" />
+          </label>
+          <label className="block text-xs text-slate-300 space-y-1">Client role
+            <select className="input w-full" value={role} onChange={event => setRole(event.target.value)}>
+              <option value="agent">Agent</option><option value="manager">Manager</option><option value="owner">Owner</option>
+            </select>
+          </label>
+          <p className="text-xs text-slate-500">Ask new members to open this CRM’s <Link href="/signup" className="text-green-300">/signup</Link> page and verify their email first. This action does not send an invitation.</p>
+          <button type="button" disabled={!email.trim()} className="btn-primary w-full" onClick={() => {
+            if (window.confirm(`Grant ${email.trim()} ${role} access to ${business.name}? This includes access to client conversations and leads.`)) mutate('PUT', { email: email.trim(), role })
+          }}>Assign to client</button>
+        </fieldset>}
+      </section>
     </div>
   )
+}
+
+export function SettingsClient({ businesses, teamMembers, userId, canProvision }: Props) {
+  const router = useRouter()
+  const [clientList, setClientList] = useState(businesses)
+  const [selectedId, setSelectedId] = useState(businesses[0]?.id ?? '')
+  const [showCreate, setShowCreate] = useState(false)
+  const [draft, setDraft] = useState(emptyClient)
+  const [creating, setCreating] = useState(false)
+  const selected = clientList.find(business => business.id === selectedId)
+
+  async function createClient() {
+    setCreating(true)
+    try {
+      const response = await fetch('/api/business/clients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Unable to create client')
+      setClientList(previous => [...previous, result.result])
+      setSelectedId(result.result.id)
+      setShowCreate(false)
+      setDraft(emptyClient)
+      toast.success('Client created, paused until WhatsApp onboarding is verified')
+      router.refresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to create client')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="flex flex-wrap items-center justify-between gap-4">
+      <div><h1 className="text-2xl font-bold text-white flex items-center gap-2"><Building2 className="text-green-400" /> Client management</h1>
+        <p className="text-sm text-slate-400 mt-1">One workspace for client businesses, team access and automation controls.</p></div>
+      {canProvision && <button type="button" className="btn-primary flex items-center gap-2" onClick={() => setShowCreate(!showCreate)}><Plus size={16} /> New client</button>}
+    </div>
+    {showCreate && <section className="card p-6 space-y-4">
+      <h2 className="font-semibold text-white">Create client business</h2>
+      <p className="text-xs text-slate-400">A new client has an empty catalog and starts paused. No WhatsApp messages are sent and no other accounts receive access.</p>
+      <fieldset disabled={creating} className="grid sm:grid-cols-2 gap-4">
+        {([['name', 'Business name'], ['phone_number_id', 'Meta phone number ID'], ['waba_id', 'WhatsApp Business Account ID'], ['timezone', 'Timezone (IANA)'], ['owner_phone', 'Owner alert number (country code + digits, optional)']] as const).map(([key, label]) => <label key={key} className="text-xs text-slate-300 space-y-1">
+          <span className="block">{label}</span><input className="input w-full" value={draft[key]} maxLength={160} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />
+        </label>)}
+      </fieldset>
+      <button type="button" disabled={creating} className="btn-primary" onClick={createClient}>{creating ? 'Creating…' : 'Create paused client'}</button>
+    </section>}
+    {clientList.length ? <>
+      <label className="block text-xs text-slate-300 space-y-1">Selected client
+        <select className="input w-full" value={selectedId} onChange={event => setSelectedId(event.target.value)}>
+          {clientList.map(business => <option key={business.id} value={business.id}>{business.name}</option>)}
+        </select>
+      </label>
+      {selected && <ClientPanel key={selected.id} business={selected} userId={userId} members={teamMembers.filter(member => member.business_id === selected.id)} onSaved={updated => setClientList(previous => previous.map(business => business.id === updated.id ? updated : business))} />}
+    </> : <p className="card p-6 text-sm text-slate-400">No clients assigned. Only a platform operator can create a client; unassigned accounts cannot give themselves access.</p>}
+    <p className="text-xs text-slate-500 flex items-center gap-2"><ShieldCheck size={16} /> Every client action is checked on the server. Being an operator does not grant access to unrelated clients.</p>
+  </div>
 }

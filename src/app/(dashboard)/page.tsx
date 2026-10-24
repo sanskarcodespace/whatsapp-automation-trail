@@ -5,16 +5,10 @@ import {
   TrendingUp, CheckCircle2, Clock, Send, XCircle
 } from 'lucide-react'
 
-async function getStats(supabase: any, businessIds: string[]) {
+async function getStats(supabase: Awaited<ReturnType<typeof createServiceClient>>, businessIds: string[]) {
   if (!businessIds.length) return null
 
   const biz = businessIds
-
-  const { data: businesses } = await supabase
-    .from('businesses')
-    .select('id, phone_number_id')
-    .in('id', biz)
-  const phoneIds = (businesses ?? []).map((b: any) => b.phone_number_id).filter(Boolean)
 
   const [
     { count: totalConvs },
@@ -39,19 +33,15 @@ async function getStats(supabase: any, businessIds: string[]) {
       .in('business_id', biz).eq('status', 'qualified'),
     supabase.from('appointment_requests').select('*', { count: 'exact', head: true })
       .in('business_id', biz).eq('status', 'pending_human_confirmation'),
-    phoneIds.length > 0
-      ? supabase.from('wa_messages').select('*', { count: 'exact', head: true })
-          .in('phone_number_id', phoneIds).eq('direction', 'outbound').eq('status', 'sent')
-      : Promise.resolve({ count: 0 }),
-    phoneIds.length > 0
-      ? supabase.from('wa_messages').select('*', { count: 'exact', head: true })
-          .in('phone_number_id', phoneIds).eq('direction', 'outbound').eq('status', 'failed')
-      : Promise.resolve({ count: 0 }),
+    supabase.from('wa_messages').select('*', { count: 'exact', head: true })
+      .in('business_id', biz).eq('direction', 'outbound').eq('status', 'sent'),
+    supabase.from('wa_messages').select('*', { count: 'exact', head: true })
+      .in('business_id', biz).eq('direction', 'outbound').eq('status', 'failed'),
     supabase.from('escalations').select('*', { count: 'exact', head: true })
       .in('business_id', biz).eq('status', 'open'),
   ])
 
-  const totalUnread = (unreadData ?? []).reduce((s: number, r: any) => s + (r.unread_count ?? 0), 0)
+  const totalUnread = (unreadData ?? []).reduce((total, conversation) => total + (conversation.unread_count ?? 0), 0)
   const aiHandled = (totalConvs ?? 0) - (humanConvs ?? 0)
 
   return {
@@ -82,11 +72,7 @@ export default async function DashboardPage() {
     .select('business_id')
     .eq('user_id', user.id)
 
-  let businessIds = (memberships ?? []).map((m: any) => m.business_id).filter(Boolean)
-  if (businessIds.length === 0) {
-    const { data: allBiz } = await serviceClient.from('businesses').select('id')
-    businessIds = (allBiz ?? []).map((b: any) => b.id)
-  }
+  const businessIds = (memberships ?? []).map(membership => membership.business_id).filter(Boolean)
 
   const stats = await getStats(serviceClient, businessIds)
 
