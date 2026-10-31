@@ -8,19 +8,39 @@ export async function getBusinessAccess(client: SupabaseClient<Database>, userId
     .eq('user_id', userId)
 
   if (error) throw new Error('Unable to verify business access')
-  const memberships = data ?? []
+  const assigned = data ?? []
+  const { data: businesses, error: businessError } = assigned.length
+    ? await client.from('businesses').select('id, access_status').in('id', assigned.map(membership => membership.business_id))
+    : { data: [], error: null }
+  if (businessError) throw new Error('Unable to verify client subscription access')
+  const memberships = assigned.filter(membership => membership.role === 'platform_admin' ||
+    businesses?.some(business => business.id === membership.business_id && business.access_status !== 'suspended'))
   return {
+    memberships,
     businessIds: memberships.map(membership => membership.business_id),
     canProvision: memberships.some(membership => membership.role === 'platform_admin'),
     canAccess: (businessId: string) => memberships.some(membership => membership.business_id === businessId),
+    canAdmin: (businessId: string) => memberships.some(membership => membership.business_id === businessId && membership.role === 'platform_admin'),
     canManage: (businessId: string) => memberships.some(membership =>
       membership.business_id === businessId && ['platform_admin', 'owner', 'manager'].includes(membership.role)
     ),
     canManageMembers: (businessId: string) => memberships.some(membership =>
-      membership.business_id === businessId && ['platform_admin', 'owner'].includes(membership.role)
+      membership.business_id === businessId && membership.role === 'platform_admin'
     ),
   }
 }
+
+export const INDUSTRIES = {
+  general: 'Other / general business',
+  real_estate: 'Real estate',
+  gym: 'Gym & fitness',
+  clinic: 'Clinic / doctor',
+  ecommerce: 'E-commerce / retail',
+  salon: 'Salon & beauty',
+  education: 'Education & coaching',
+} as const
+
+export type Industry = keyof typeof INDUSTRIES
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

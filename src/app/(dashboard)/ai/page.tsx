@@ -1,7 +1,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AISettingsClient } from '@/components/ai/AISettingsClient'
-import { publicAISettings } from '@/lib/business-access'
+import { publicAISettings, getBusinessAccess } from '@/lib/business-access'
 
 export const metadata = { title: 'AI Bot Settings — WhatsApp CRM' }
 export const dynamic = 'force-dynamic'
@@ -13,16 +13,14 @@ export default async function AISettingsPage({ searchParams }: { searchParams?: 
 
   const serviceClient = await createServiceClient()
 
-  const { data: memberships } = await serviceClient
-    .from('business_members')
-    .select('business_id, role')
-    .eq('user_id', user.id)
+  const access = await getBusinessAccess(serviceClient, user.id)
+  const memberships = access.memberships
 
   const businessIds = (memberships ?? []).map(membership => membership.business_id).filter(Boolean)
   let businesses: Parameters<typeof AISettingsClient>[0]['businesses'] = []
   if (businessIds.length > 0) {
     const { data: bizRows } = await serviceClient.from('businesses')
-      .select('id, name, system_prompt, settings, ai_tone, services, products, prices, faqs, opening_hours, contact_details, booking_system, handoff_message')
+      .select('id, name, industry, system_prompt, settings, ai_tone, services, products, prices, faqs, opening_hours, contact_details, booking_system, handoff_message')
       .in('id', businessIds)
     businesses = (bizRows ?? []).map(business => ({ ...business, settings: publicAISettings(business.settings) }))
   }
@@ -43,6 +41,7 @@ export default async function AISettingsPage({ searchParams }: { searchParams?: 
 
   return (
     <AISettingsClient
+      key={requestedBusiness ?? businesses[0]?.id}
       businesses={businesses}
       initialStyleProfiles={styles}
       manageableBusinessIds={manageableBusinessIds}

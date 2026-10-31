@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   MessageSquare, LayoutDashboard, Users, Calendar,
@@ -24,10 +24,11 @@ const NAV = [
 
 type Business = { id: string; name: string; connection_status?: string; role: string }
 
-export function Sidebar({ user, businesses }: { user: any; businesses: Business[] }) {
+export function Sidebar({ user, businesses, canAdmin = false }: { user: { email?: string }; businesses: Business[]; canAdmin?: boolean }) {
   const [collapsed, setCollapsed] = useState(false)
   const [bizOpen, setBizOpen] = useState(false)
-  const [activeBiz, setActiveBiz] = useState<Business>(businesses[0] || { id: '', name: 'No Business', role: 'agent' })
+  const searchParams = useSearchParams()
+  const activeBiz = businesses.find(business => business.id === searchParams.get('business')) || businesses[0] || { id: '', name: 'No business', role: 'agent' }
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
@@ -44,7 +45,7 @@ export function Sidebar({ user, businesses }: { user: any; businesses: Business[
     error:        'bg-red-400',
     disconnected: 'bg-slate-500',
   }
-  const statusColor = statusColorMap[(activeBiz as any).connection_status ?? 'pending'] ?? 'bg-slate-500'
+  const statusColor = statusColorMap[activeBiz.connection_status ?? 'pending'] ?? 'bg-slate-500'
 
   return (
     <aside className={clsx(
@@ -74,7 +75,7 @@ export function Sidebar({ user, businesses }: { user: any; businesses: Business[
               <div className="text-xs font-medium text-white truncate">{activeBiz.name || 'Select Business'}</div>
               <div className="flex items-center gap-1 mt-0.5">
                 <div className={`w-1.5 h-1.5 rounded-full ${statusColor}`} />
-                <span className="text-[10px] text-slate-500 capitalize">{(activeBiz as any).connection_status ?? 'pending'}</span>
+                <span className="text-[10px] text-slate-500 capitalize">{activeBiz.connection_status ?? 'pending'}</span>
               </div>
             </div>
             <ChevronDown className={`w-3 h-3 text-slate-500 transition-transform ${bizOpen ? 'rotate-180' : ''}`} />
@@ -85,7 +86,7 @@ export function Sidebar({ user, businesses }: { user: any; businesses: Business[
               {businesses.map(b => (
                 <button
                   key={b.id}
-                  onClick={() => { setActiveBiz(b); setBizOpen(false) }}
+                  onClick={() => { setBizOpen(false); router.push(`${pathname}?business=${encodeURIComponent(b.id)}`) }}
                   className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[rgb(var(--bg-hover))] transition-colors text-left"
                 >
                   <Check className={`w-3 h-3 shrink-0 ${activeBiz.id === b.id ? 'text-green-400' : 'opacity-0'}`} />
@@ -100,12 +101,13 @@ export function Sidebar({ user, businesses }: { user: any; businesses: Business[
 
       {/* Nav */}
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+        {canAdmin && <Link href="/admin" className={clsx('nav-item mb-3', { active: pathname === '/admin' })}><Building2 className="w-4 h-4 shrink-0" />{!collapsed && <span>Admin · All clients</span>}</Link>}
         {NAV.map(({ href, icon: Icon, label }) => {
           const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
           return (
             <Link
               key={href}
-              href={href}
+              href={activeBiz.id ? `${href}?business=${encodeURIComponent(activeBiz.id)}` : href}
               className={clsx('nav-item', { active })}
               title={collapsed ? label : undefined}
             >
@@ -121,7 +123,7 @@ export function Sidebar({ user, businesses }: { user: any; businesses: Business[
         {!collapsed && (
           <div className="px-3 py-2">
             <div className="text-xs font-medium text-white truncate">{user.email}</div>
-            <div className="text-[10px] text-slate-500 capitalize">{activeBiz?.role ?? 'member'}</div>
+            <div className="text-[10px] text-slate-500">{canAdmin ? 'Administrator' : 'Client workspace'}</div>
           </div>
         )}
         <button onClick={signOut} className="nav-item w-full" title={collapsed ? 'Sign out' : undefined}>

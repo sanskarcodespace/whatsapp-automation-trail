@@ -9,6 +9,40 @@ const context = (body, options = {}) => buildContext({ business, messages: [row(
 const reply = (body, output = {}, options = {}) => prepareReply({ context: context(body, options), output });
 const combined = result => `${result.reply_text_1} ${result.reply_text_2}`;
 
+test('gym, clinic and shop catalogs produce their own prices without real-estate wording', () => {
+  for (const [industry, name, price] of [['gym', 'Monthly membership', '₹1,500 / month'], ['clinic', 'General consultation', '₹600'], ['ecommerce', 'Blue shirt', '₹900']]) {
+    const client = { id: industry, name: `${industry} business`, industry, settings: { catalog: { projects: [{ id: 'offering', name, price, description: 'Listed details only' }] } } };
+    const build = () => buildContext({ business: client, messages: [{ body: `${name} price`, business_id: industry }] });
+    const first = prepareReply({ context: build(), output: { reply_1: 'Stale price ₹1' } });
+    assert.match(first.reply_text, new RegExp(price.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.doesNotMatch(first.reply_text, /BHK|property|consultant|site visit|possession|Amolik|status needs/i);
+    assert.equal(first.lead_payload.preferred_bhk, null);
+    client.settings.catalog.projects[0].price = '₹777';
+    assert.match(prepareReply({ context: build(), output: {} }).reply_text, /₹777/);
+  }
+});
+
+test('non-property booking requests are pending and negated or informational messages are not consent', () => {
+  const client = { id: 'gym', name: 'Gym', industry: 'gym', settings: { owner_phone: '919123456789' } };
+  const respond = message => prepareReply({ context: buildContext({ business: client, messages: [{ business_id: 'gym', body: message }] }), output: { reply_1: 'Your appointment is confirmed.' } });
+  const result = respond('Please book a trial tomorrow at 5 PM');
+  assert.equal(result.appointment_requested, true);
+  assert.equal(result.appointment_status, 'pending_human_confirmation');
+  assert.match(result.reply_text, /request is noted/);
+  assert.doesNotMatch(result.reply_text + result.owner_alert_text, /property|BHK|site visit/i);
+  assert.equal(result.conversation_payload.human_takeover, true);
+  for (const message of ['Do not book an appointment', 'What is the appointment policy?', 'Yes', 'Book a session, but cancel the session']) assert.equal(respond(message).appointment_requested, false, message);
+});
+
+test('clinic assistants provide administrative information rather than medical instructions', () => {
+  const client = { id: 'clinic', name: 'Clinic', industry: 'clinic', settings: {} };
+  const ctx = buildContext({ business: client, messages: [{ business_id: 'clinic', body: 'What medication dosage should I take?' }] });
+  assert.match(ctx.system_prompt, /Do not diagnose, prescribe/);
+  const result = prepareReply({ context: ctx, output: { reply_1: 'Take 500mg of made-up medicine.' } });
+  assert.match(result.reply_text, /qualified clinician/);
+  assert.doesNotMatch(result.reply_text, /500mg/);
+});
+
 test('CRM catalog edits change the next reply without changing another client', () => {
   const tenant = { id: 'crm-client', name: 'Cedar Homes', settings: { catalog: { projects: [{ id: 'cedar', name: 'Cedar Court', location: 'Sector 20', status: 'Upcoming', configurations: [{ bhk: 2, price: '₹55 lakh' }], amenities: ['Garden'] }] } } };
   const inquiry = () => buildContext({ business: tenant, messages: [{ business_id: tenant.id, body: 'Cedar Court 2 bhk price', customer_phone: '919123456789' }] });

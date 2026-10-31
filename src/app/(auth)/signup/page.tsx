@@ -16,10 +16,15 @@ export default function SignupPage() {
     setMessage('')
     try {
       const supabase = createClient()
-      const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/auth/callback` } })
+      const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/auth/callback` } })
       if (error) throw error
       setPassword('')
-      setMessage('Check your email to verify your account, then ask your operator to assign you to a client. If you already have an account, sign in instead.')
+      if (data.session) {
+        const response = await fetch('/api/auth/accept-invitations', { method: 'POST' })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || 'Unable to activate access')
+        window.location.assign(result.destination)
+      } else setMessage('Check your email to verify your account. Access activates only for an email approved by your administrator. Already have an account? Sign in instead.')
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to create account')
     } finally {
@@ -29,8 +34,8 @@ export default function SignupPage() {
 
   return <main className="min-h-screen flex items-center justify-center p-6">
     <div className="card p-6 max-w-md w-full space-y-5">
-      <h1 className="text-xl text-white font-semibold">Create your CRM account</h1>
-      <p className="text-sm text-slate-400">Creating an account grants no client access. An authorized operator or owner assigns your role after email verification.</p>
+      <h1 className="text-xl text-white font-semibold">Activate your client account</h1>
+      <p className="text-sm text-slate-400">Use the email your administrator approved. Choose your own password and verify your email. An unapproved account cannot use a client workspace or automation; never share your password with your administrator.</p>
       <form onSubmit={signup} className="space-y-4">
         <label className="block text-xs text-slate-300 space-y-1">Email
           <input type="email" required autoComplete="email" className="input w-full" value={email} onChange={event => setEmail(event.target.value)} disabled={busy} />

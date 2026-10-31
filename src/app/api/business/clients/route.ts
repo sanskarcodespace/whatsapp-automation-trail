@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { getBusinessAccess, isRecord } from '@/lib/business-access'
+import { getBusinessAccess, isRecord, INDUSTRIES } from '@/lib/business-access'
 import type { Json } from '@/types/database'
 
 export const dynamic = 'force-dynamic'
@@ -17,11 +17,14 @@ async function manage(req: NextRequest, action: 'create' | 'update' | 'upsert_me
       return NextResponse.json({ error: 'Select a client' }, { status: 400 })
     }
     const memberAction = action === 'upsert_member' || action === 'remove_member'
-    const allowed = memberAction ? ['email', 'role', 'user_id'] : ['name', 'phone_number_id', 'waba_id', 'timezone', 'owner_phone', 'is_active']
+    const allowed = memberAction ? ['email', 'role', 'user_id'] : ['name', 'phone_number_id', 'waba_id', 'timezone', 'owner_phone', 'is_active', 'industry', 'access_status', ...(action === 'create' ? ['email'] : [])]
     if (Object.keys(payload).some(key => !allowed.includes(key)) || JSON.stringify(payload).length > 5000 ||
       Object.entries(payload).some(([key, value]) => key === 'is_active' ? typeof value !== 'boolean' : typeof value !== 'string') ||
       (!memberAction && ((action === 'create' || payload.name !== undefined) && (typeof payload.name !== 'string' || !payload.name.trim() || payload.name.length > 160))) ||
-      ['phone_number_id', 'waba_id'].some(key => (action === 'create' || payload[key] !== undefined) && !/^[0-9]{6,30}$/.test(String(payload[key] ?? ''))) ||
+      ['phone_number_id', 'waba_id'].some(key => payload[key] !== undefined && payload[key] !== '' && !/^[0-9]{6,30}$/.test(String(payload[key]))) ||
+      (payload.industry !== undefined && !Object.hasOwn(INDUSTRIES, String(payload.industry))) ||
+      (payload.access_status !== undefined && !['active', 'suspended'].includes(String(payload.access_status))) ||
+      (payload.email !== undefined && (typeof payload.email !== 'string' || payload.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email))) ||
       (payload.owner_phone !== undefined && payload.owner_phone !== '' && !/^[1-9][0-9]{6,14}$/.test(String(payload.owner_phone))) ||
       (action === 'create' && payload.is_active !== undefined) ||
       (action === 'upsert_member' && (typeof payload.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email) || !['owner', 'manager', 'agent'].includes(String(payload.role)))) ||
@@ -30,7 +33,7 @@ async function manage(req: NextRequest, action: 'create' | 'update' | 'upsert_me
     }
     const serviceClient = await createServiceClient()
     const access = await getBusinessAccess(serviceClient, user.id)
-    const permitted = action === 'create' ? access.canProvision : memberAction ? access.canManageMembers(String(business_id)) : access.canManage(String(business_id))
+    const permitted = action === 'create' ? access.canProvision : access.canAdmin(String(business_id))
     if (!permitted) return NextResponse.json({ error: 'Your role cannot perform this action for this client' }, { status: 403 })
     const { data, error } = await serviceClient.rpc('crm_manage_client', {
       p_actor_id: user.id, p_action: action,
@@ -40,7 +43,7 @@ async function manage(req: NextRequest, action: 'create' | 'update' | 'upsert_me
     if (error) {
       if (error.code === '23505') return NextResponse.json({ error: 'That WhatsApp number is already assigned to a client' }, { status: 409 })
       if (error.code === 'P0001') return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ error: 'Unable to save. Check that CRM migration 006 is deployed and your access is current.' }, { status: 503 })
+      return NextResponse.json({ error: 'Unable to save. Check that CRM migration 007 is deployed and your access is current.' }, { status: 503 })
     }
     return NextResponse.json({ success: true, result: data })
   } catch {

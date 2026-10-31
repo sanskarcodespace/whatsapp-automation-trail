@@ -53,6 +53,8 @@ function setup({ role = 'owner', membership = true, authenticated = true, provid
       }
       if (name === 'crm_manage_client') return { data: { id: args.p_business_id || 'new-client' }, error: null }
       if (name === 'crm_record_connection_check') return { data: true, error: null }
+      if (name === 'crm_accept_client_invites') return { data: 0, error: null }
+      if (name === 'crm_set_client_invitation') return { data: {}, error: null }
       throw new Error(`Unexpected RPC: ${name}`)
     },
     from(table) {
@@ -117,7 +119,7 @@ function setup({ role = 'owner', membership = true, authenticated = true, provid
     })
   }
   function page(name) {
-    const components = Object.fromEntries(['layout/Sidebar', 'ai/AISettingsClient', 'settings/SettingsClient', 'inbox/InboxClient', 'contacts/ContactsClient', 'appointments/AppointmentsClient', 'leads/LeadsClient', 'export/ExportClient']
+    const components = Object.fromEntries(['layout/Sidebar', 'ai/AISettingsClient', 'admin/ClientsAdmin', 'inbox/InboxClient', 'contacts/ContactsClient', 'appointments/AppointmentsClient', 'leads/LeadsClient', 'export/ExportClient']
       .map(component => [`@/components/${component}`, { [component.split('/')[1]]: component }]))
     const render = (type, props) => ({ type, props })
     return loadModule(`src/app/(dashboard)/${name}.tsx`, {
@@ -126,6 +128,7 @@ function setup({ role = 'owner', membership = true, authenticated = true, provid
       '@/lib/business-access': access,
       'react/jsx-runtime': { jsx: render, jsxs: render },
       'next/navigation': { redirect: location => { throw new Error(`redirect:${location}`) } },
+      'next/link': 'Link',
       'lucide-react': {},
     }).default
   }
@@ -159,7 +162,8 @@ test('every API rejects unauthenticated callers before database access', async (
 test('unassigned accounts cannot read tenant data or auto-create admin memberships through dashboard pages', async () => {
   const context = setup({ membership: false })
   for (const name of ['layout', 'page', 'ai/page', 'settings/page', 'inbox/page', 'contacts/page', 'appointments/page', 'leads/page', 'export/page']) {
-    await context.page(name)({ children: null })
+    if (name === 'layout') await assert.rejects(() => context.page(name)({ children: null }), /redirect:\/access/)
+    else await context.page(name)({ children: null })
   }
   assert.equal(context.calls.some(call => call.action), false)
   assert.equal(context.calls.some(call => call.table === 'businesses'), false)
@@ -269,7 +273,7 @@ test('client updates and team assignments enforce scoped roles and forbid operat
   assert.equal((await handler.PATCH(request({ business_id: 'biz-a', is_active: 'false' }))).status, 400)
   const manager = setup({ role: 'manager' })
   assert.equal((await manager.route('business/clients').PUT(request({ business_id: 'biz-a', email: 'member@example.invalid', role: 'agent' }))).status, 403)
-  assert.equal((await manager.route('business/clients').PATCH(request({ business_id: 'biz-a', is_active: false }))).status, 200)
+  assert.equal((await manager.route('business/clients').PATCH(request({ business_id: 'biz-a', is_active: false }))).status, 403)
 })
 
 test('AI editing rights follow each client membership, not the first membership', async () => {
@@ -285,11 +289,11 @@ test('AI editing rights follow each client membership, not the first membership'
 
 test('connection verification requires server credentials, correct WABA, subscription and registered phone', async () => {
   const rows = { businesses: [{ id: 'biz-a', phone_number_id: '123456789', waba_id: '987654321' }] }
-  const missing = setup({ rows })
+  const missing = setup({ rows, role: 'platform_admin' })
   assert.equal((await missing.route('business/connection').POST(request({ business_id: 'biz-a' }))).status, 503)
   const env = { WHATSAPP_SHARED_ACCESS_TOKEN: 'server-only-token', WHATSAPP_APP_ID: 'app-123', WHATSAPP_GRAPH_VERSION: 'v99.0' }
   for (const fail of ['phone', 'app', 'registration', 'none']) {
-    const context = setup({ rows, env, graphResponse: async (url, options) => {
+    const context = setup({ rows, env, role: 'platform_admin', graphResponse: async (url, options) => {
       assert.equal(options.headers.Authorization, 'Bearer server-only-token')
       assert.equal(options.redirect, 'error')
       if (url.includes('/phone_numbers?')) return Response.json({ data: fail === 'phone' ? [] : [{ id: '123456789' }] })
@@ -301,6 +305,60 @@ test('connection verification requires server credentials, correct WABA, subscri
     assert.equal(context.calls.some(call => call.rpc === 'crm_record_connection_check'), fail === 'none')
     assert.doesNotMatch(JSON.stringify(await response.json()), /server-only-token/)
   }
+})
+
+test('suspended client accounts lose every server API and dashboard data path', async () => {
+  const context = setup({ rows: { businesses: [{ id: 'biz-a', access_status: 'suspended' }] } })
+  assert.equal((await context.route('messages').GET(new Request('https://example.invalid/api/messages?business_id=biz-a&session_id=session-a'))).status, 403)
+  for (const name of ['business/ai-settings', 'messages/send', 'conversations/toggle-ai']) {
+    const response = await context.route(name).POST(request({ business_id: 'biz-a', session_id: 'session-a', message: 'Hello', human_takeover: false, settings: {} }))
+    assert.equal(response.status, 403, name)
+  }
+  await assert.rejects(() => context.page('layout')({ children: null }), /redirect:\/access/)
+  const inbox = await context.page('inbox/page')()
+  assert.deepEqual(Array.from(inbox.props.businessIds), [])
+  assert.deepEqual(Array.from(inbox.props.initialConversations), [])
+  assert.equal(context.sends.length, 0)
+})
+
+test('only scoped administrators restore service, approve users or open the admin portal', async () => {
+  for (const role of ['owner', 'manager', 'agent']) {
+    const context = setup({ role })
+    assert.equal((await context.route('business/clients').PATCH(request({ business_id: 'biz-a', access_status: 'active' }))).status, 403)
+    assert.equal((await context.route('business/clients').PUT(request({ business_id: 'biz-a', email: 'new@example.invalid', role: 'owner' }))).status, 403)
+    assert.equal((await context.route('business/invitations').DELETE(request({ business_id: 'biz-a', email: 'new@example.invalid' }))).status, 403)
+    await assert.rejects(() => context.page('admin/page')(), /redirect:\/$/)
+  }
+  const admin = setup({ role: 'platform_admin', rows: { businesses: [{ id: 'biz-a', access_status: 'suspended' }] } })
+  assert.equal((await admin.route('business/clients').PATCH(request({ business_id: 'biz-a', access_status: 'active' }))).status, 200)
+  assert.equal((await admin.route('business/clients').POST(request({ name: 'Gym', email: 'gym@example.invalid', industry: 'gym' }))).status, 200)
+  assert.equal((await admin.route('business/clients').POST(request({ name: 'Bad', industry: 'unknown' }))).status, 400)
+})
+
+test('invite acceptance always uses the authenticated identity and routes profiles separately', async () => {
+  const guest = setup({ authenticated: false })
+  assert.equal((await guest.route('auth/accept-invitations').POST(request({ user_id: 'user-b' }))).status, 401)
+  for (const role of ['platform_admin', 'owner']) {
+    const context = setup({ role })
+    const response = await context.route('auth/accept-invitations').POST(request({ user_id: 'user-b' }))
+    assert.equal((await response.json()).destination, role === 'platform_admin' ? '/admin' : '/')
+    assert.equal(context.calls.find(call => call.rpc === 'crm_accept_client_invites').args.p_user_id, 'user-a')
+  }
+  const unassigned = setup({ membership: false })
+  assert.equal((await (await unassigned.route('auth/accept-invitations').POST()).json()).destination, '/access')
+})
+
+test('workspace navigation filters data by an allowed selected client', async () => {
+  const context = setup({ rows: {
+    business_members: [{ user_id: 'user-a', business_id: 'biz-a', role: 'owner' }, { user_id: 'user-a', business_id: 'biz-b', role: 'owner' }],
+    businesses: [{ id: 'biz-a' }, { id: 'biz-b' }],
+    conversations: [{ business_id: 'biz-a', session_id: 'session-a' }, { business_id: 'biz-b', session_id: 'session-b' }],
+  } })
+  const inbox = await context.page('inbox/page')({ searchParams: Promise.resolve({ business: 'biz-b' }) })
+  assert.equal(inbox.props.initialConversations.length, 1)
+  assert.equal(inbox.props.initialConversations[0].business_id, 'biz-b')
+  const foreign = await context.page('inbox/page')({ searchParams: Promise.resolve({ business: 'foreign' }) })
+  assert.equal(foreign.props.initialConversations.length, 0)
 })
 
 test('manual reply refuses a substituted recipient', async () => {

@@ -4,10 +4,18 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      client_invitations: {
+        Row: { id: string; business_id: string; email: string; role: 'owner' | 'manager' | 'agent'; status: 'pending' | 'accepted' | 'revoked'; invited_by: string; accepted_by: string | null; expires_at: string; created_at: string; updated_at: string }
+        Insert: Partial<Database['public']['Tables']['client_invitations']['Row']>
+        Update: Partial<Database['public']['Tables']['client_invitations']['Row']>
+        Relationships: []
+      }
       businesses: {
         Row: {
           id: string
           name: string
+          industry: 'general' | 'real_estate' | 'gym' | 'clinic' | 'ecommerce' | 'salon' | 'education'
+          access_status: 'active' | 'suspended'
           phone_number_id: string | null
           waba_id: string | null
           is_active: boolean
@@ -213,6 +221,14 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      crm_accept_client_invites: {
+        Args: { p_user_id: string }
+        Returns: number
+      }
+      crm_set_client_invitation: {
+        Args: { p_actor_id: string; p_business_id: string; p_email: string; p_role?: string; p_revoke?: boolean }
+        Returns: Json
+      }
       crm_record_connection_check: {
         Args: { p_actor_id: string; p_business_id: string; p_phone_number_id: string; p_waba_id: string }
         Returns: boolean

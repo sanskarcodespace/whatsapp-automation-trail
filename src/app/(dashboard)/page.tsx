@@ -1,3 +1,4 @@
+import { getBusinessAccess } from '@/lib/business-access'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import {
@@ -60,19 +61,17 @@ async function getStats(supabase: Awaited<ReturnType<typeof createServiceClient>
 
 export const dynamic = 'force-dynamic'
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams?: Promise<{ business?: string }> } = {}) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
   const serviceClient = await createServiceClient()
 
-  const { data: memberships } = await serviceClient
-    .from('business_members')
-    .select('business_id')
-    .eq('user_id', user.id)
+  const access = await getBusinessAccess(serviceClient, user.id)
 
-  const businessIds = (memberships ?? []).map(membership => membership.business_id).filter(Boolean)
+  const requestedBusiness = (await searchParams)?.business
+  const businessIds = access.businessIds.filter(businessId => !requestedBusiness || businessId === requestedBusiness)
 
   const stats = await getStats(serviceClient, businessIds)
 

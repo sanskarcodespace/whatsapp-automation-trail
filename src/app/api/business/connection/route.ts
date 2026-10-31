@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     if (!isRecord(body) || typeof body.business_id !== 'string') return NextResponse.json({ error: 'Select a client' }, { status: 400 })
     const serviceClient = await createServiceClient()
     const access = await getBusinessAccess(serviceClient, user.id)
-    if (!access.canManage(body.business_id)) return NextResponse.json({ error: 'Owner or manager access required' }, { status: 403 })
+    if (!access.canAdmin(body.business_id)) return NextResponse.json({ error: 'Your administrator manages WhatsApp setup' }, { status: 403 })
     const { data: business, error: readError } = await serviceClient.from('businesses').select('phone_number_id, waba_id').eq('id', body.business_id).single()
     if (readError || !business || !/^[0-9]{6,30}$/.test(business.phone_number_id ?? '') || !/^[0-9]{6,30}$/.test(business.waba_id ?? '')) {
       return NextResponse.json({ error: 'A valid Meta phone number ID and WABA ID are required' }, { status: 400 })

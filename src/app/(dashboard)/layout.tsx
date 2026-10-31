@@ -1,3 +1,4 @@
+import { getBusinessAccess } from '@/lib/business-access'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -12,10 +13,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const serviceClient = await createServiceClient()
 
   // Fetch user's business memberships
-  const { data: memberships } = await serviceClient
-    .from('business_members')
-    .select('business_id, role')
-    .eq('user_id', user.id)
+  const access = await getBusinessAccess(serviceClient, user.id)
+  if (!access.businessIds.length) redirect('/access')
+  const memberships = access.memberships
 
   const bizIds = (memberships ?? []).map(membership => membership.business_id).filter(Boolean)
 
@@ -35,8 +35,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen overflow-hidden bg-[rgb(var(--bg-primary))]">
-      <Sidebar user={user} businesses={businesses} />
-      <main className="flex-1 overflow-auto">
+      <Sidebar user={user} businesses={businesses} canAdmin={access.canProvision} />
+      <main className="flex-1 min-w-0 overflow-auto">
         {children}
       </main>
     </div>

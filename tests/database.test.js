@@ -29,7 +29,7 @@ before(() => {
   execFileSync(path.join(bin, 'initdb'), ['-D', dataDirectory, '-A', 'trust', '--no-locale'], { stdio: 'pipe' });
   execFileSync(path.join(bin, 'pg_ctl'), ['-D', dataDirectory, '-l', path.join(directory, 'postgres.log'), '-o', `-k ${directory} -p ${port} -c listen_addresses=''`, '-w', 'start'], { stdio: 'pipe' });
   started = true;
-  for (const filename of ['tests/database-fixture.sql', 'migrations/003_durable_tenant_queue.sql', 'migrations/003_durable_tenant_queue.sql', 'migrations/005_lead_stage_compatibility.sql', 'migrations/005_lead_stage_compatibility.sql', 'migrations/006_crm_client_control.sql', 'migrations/006_crm_client_control.sql']) {
+  for (const filename of ['tests/database-fixture.sql', 'migrations/003_durable_tenant_queue.sql', 'migrations/003_durable_tenant_queue.sql', 'migrations/005_lead_stage_compatibility.sql', 'migrations/005_lead_stage_compatibility.sql', 'migrations/006_crm_client_control.sql', 'migrations/006_crm_client_control.sql', 'migrations/007_admin_multibusiness.sql', 'migrations/007_admin_multibusiness.sql']) {
     execFileSync(path.join(bin, 'psql'), [...args, '-f', path.join(__dirname, '..', filename)], { stdio: 'pipe' });
   }
   sql(`insert into businesses(id,name,phone_number_id,is_active,settings) values (${quote(businessA)},'Amolik Group','phone-a',true,'{"catalog_key":"amolik"}'),(${quote(businessB)},'Tenant B','phone-b',true,'{}'); insert into auth.users values ('00000000-0000-0000-0000-000000000001','a@example.invalid'),('00000000-0000-0000-0000-000000000002','b@example.invalid'); insert into business_members(business_id,user_id,role) values (${quote(businessA)},'00000000-0000-0000-0000-000000000001','platform_admin'),(${quote(businessB)},'00000000-0000-0000-0000-000000000002','owner');`);
@@ -263,7 +263,7 @@ const manageClient = (actor, action, business, payload) => json(`select crm_mana
 const saveSettings = (actor, business, settings, style = null) => json(`select crm_save_ai_settings(${quote(actor)},${quote(business)},${quote(JSON.stringify(settings))}::jsonb,null,${style ? `${quote(JSON.stringify(style))}::jsonb` : 'null'})`);
 
 test('CRM operator creates an isolated paused client; ordinary owners cannot provision tenants', () => {
-  const payload = { name: 'Cedar Homes', phone_number_id: '123456789', waba_id: '987654321', owner_phone: '919123456789' };
+  const payload = { name: 'Cedar Homes', industry: 'real_estate', phone_number_id: '123456789', waba_id: '987654321', owner_phone: '919123456789' };
   assert.throws(() => manageClient(owner, 'create', null, payload), /Platform operator access required/);
   assert.throws(() => manageClient(operator, 'create', null, { ...payload, is_active: true }), /New clients start paused/);
   createdClient = manageClient(operator, 'create', null, payload);
@@ -273,19 +273,20 @@ test('CRM operator creates an isolated paused client; ordinary owners cannot pro
   assert.equal(sql(`select count(*) from business_members where business_id=${quote(createdClient.id)}`), '1');
   assert.deepEqual(json(`select settings->'catalog' from businesses where id=${quote(createdClient.id)}`), { projects: [] });
   assert.throws(() => manageClient(operator, 'create', null, payload), /duplicate key/);
-  assert.throws(() => manageClient(operator, 'update', businessB, { name: 'Foreign change' }), /Owner or manager access required/);
+  assert.throws(() => manageClient(operator, 'update', businessB, { name: 'Foreign change' }), /Platform operator access required/);
 });
 
-test('CRM member management requires verified accounts and protects operator and last-owner access', () => {
+test('CRM member approval is admin-only, waits for verification and permits revocation', () => {
   sql(`insert into auth.users(id,email,email_confirmed_at) values (${quote(manager)},'manager@example.invalid',now()),(${quote(unverified)},'pending@example.invalid',null),(${quote(secondOwner)},'owner2@example.invalid',now())`);
-  assert.throws(() => manageClient(operator, 'upsert_member', createdClient.id, { email: 'pending@example.invalid', role: 'agent' }), /verify their CRM email/);
-  assert.throws(() => manageClient(operator, 'upsert_member', createdClient.id, { email: 'b@example.invalid', role: 'platform_admin' }), /Choose owner, manager or agent/);
+  manageClient(operator, 'upsert_member', createdClient.id, { email: 'pending@example.invalid', role: 'agent' });
+  assert.equal(sql(`select count(*) from business_members where user_id=${quote(unverified)}`), '0');
+  assert.throws(() => manageClient(operator, 'upsert_member', createdClient.id, { email: 'b@example.invalid', role: 'platform_admin' }), /Valid email and client role required/);
   manageClient(operator, 'upsert_member', createdClient.id, { email: 'B@example.invalid', role: 'owner' });
-  manageClient(owner, 'upsert_member', createdClient.id, { email: 'manager@example.invalid', role: 'manager' });
-  assert.throws(() => manageClient(manager, 'upsert_member', createdClient.id, { email: 'owner2@example.invalid', role: 'agent' }), /Owner access required/);
-  assert.throws(() => manageClient(owner, 'remove_member', createdClient.id, { user_id: operator }), /platform operator/);
-  assert.throws(() => manageClient(owner, 'remove_member', createdClient.id, { user_id: owner }), /own access/);
-  assert.throws(() => manageClient(operator, 'remove_member', createdClient.id, { user_id: owner }), /last owner/);
+  manageClient(operator, 'upsert_member', createdClient.id, { email: 'manager@example.invalid', role: 'manager' });
+  assert.throws(() => manageClient(manager, 'upsert_member', createdClient.id, { email: 'owner2@example.invalid', role: 'agent' }), /Platform operator access required/);
+  assert.throws(() => manageClient(owner, 'remove_member', createdClient.id, { user_id: operator }), /Platform operator access required/);
+  assert.throws(() => manageClient(owner, 'remove_member', createdClient.id, { user_id: owner }), /Platform operator access required/);
+  assert.throws(() => manageClient(operator, 'remove_member', createdClient.id, { user_id: operator }), /own access/);
   manageClient(operator, 'upsert_member', createdClient.id, { email: 'owner2@example.invalid', role: 'owner' });
   manageClient(operator, 'remove_member', createdClient.id, { user_id: owner });
   assert.equal(sql(`select count(*) from business_members where business_id=${quote(businessB)} and user_id=${quote(owner)}`), '1');
@@ -293,15 +294,15 @@ test('CRM member management requires verified accounts and protects operator and
 });
 
 test('CRM activation requires verified connection and never resets human takeover', () => {
-  assert.throws(() => manageClient(manager, 'update', createdClient.id, { is_active: true }), /Verify the WhatsApp connection/);
+  assert.throws(() => manageClient(operator, 'update', createdClient.id, { is_active: true }), /Verify the WhatsApp connection/);
   assert.throws(() => sql(`select crm_record_connection_check(${quote(operator)},${quote(createdClient.id)},'999999999','987654321')`), /connection changed/);
   sql(`select crm_record_connection_check(${quote(operator)},${quote(createdClient.id)},'123456789','987654321')`);
-  assert.equal(manageClient(manager, 'update', createdClient.id, { is_active: true }).is_active, true);
+  assert.equal(manageClient(operator, 'update', createdClient.id, { is_active: true }).is_active, true);
   ingest('crm-human', 'Hello', createdClient.id, '123456789', '919777777777');
   sql(`update conversations set human_takeover=true where business_id=${quote(createdClient.id)}`);
-  manageClient(manager, 'update', createdClient.id, { is_active: false });
+  manageClient(operator, 'update', createdClient.id, { is_active: false });
   assert.equal(ingest('crm-paused', 'Hello', null, '123456789', '919777777777').accepted, false);
-  manageClient(manager, 'update', createdClient.id, { is_active: true });
+  manageClient(operator, 'update', createdClient.id, { is_active: true });
   assert.equal(sql(`select human_takeover from conversations where business_id=${quote(createdClient.id)}`), 't');
   assert.throws(() => manageClient(operator, 'update', createdClient.id, { phone_number_id: '555555555' }), /identity can only be corrected/);
 });
@@ -356,10 +357,62 @@ test('anonymous and browser roles cannot impersonate actors through CRM service 
   }
 });
 
+test('admin creates a generic client before Meta setup and verified email claims are scoped and idempotent', () => {
+  const client = manageClient(operator, 'create', null, { name: 'Test Gym', email: 'pending@example.invalid', industry: 'gym' });
+  assert.equal(client.phone_number_id, null);
+  assert.equal(client.industry, 'gym');
+  assert.equal(client.is_active, false);
+  assert.equal(sql(`select crm_accept_client_invites(${quote(unverified)})`), '0');
+  assert.equal(sql(`select crm_accept_client_invites(${quote(owner)})`), '0');
+  sql(`update auth.users set email_confirmed_at=now() where id=${quote(unverified)}`);
+  assert.equal(Number(sql(`select crm_accept_client_invites(${quote(unverified)})`)) >= 1, true);
+  assert.equal(sql(`select crm_accept_client_invites(${quote(unverified)})`), '0');
+  assert.equal(sql(`select role from business_members where business_id=${quote(client.id)} and user_id=${quote(unverified)}`), 'owner');
+  assert.throws(() => manageClient(unverified, 'update', client.id, { is_active: true }), /Platform operator/);
+  sql(`select crm_set_client_invitation(${quote(operator)},${quote(client.id)},'pending@example.invalid','owner',true)`);
+  assert.equal(sql(`select count(*) from business_members where business_id=${quote(client.id)} and user_id=${quote(unverified)}`), '0');
+  assert.equal(sql(`select crm_accept_client_invites(${quote(unverified)})`), '0');
+});
+
+test('suspension blocks RLS, settings writes and workflow sends without deleting history', () => {
+  const beforeCount = sql(`select count(*) from wa_messages where business_id=${quote(createdClient.id)}`);
+  manageClient(operator, 'update', createdClient.id, { access_status: 'suspended' });
+  assert.equal(sql(`select is_active from businesses where id=${quote(createdClient.id)}`), 'f');
+  assert.equal(sql(`set role authenticated; set request.jwt.claim.sub = ${quote(manager)}; select count(*) from get_my_business_ids() where get_my_business_ids=${quote(createdClient.id)}`), '0');
+  assert.equal(sql(`set role authenticated; set request.jwt.claim.sub = ${quote(manager)}; select count(*) from wa_messages where business_id=${quote(createdClient.id)}`), '0');
+  assert.throws(() => sql(`set role authenticated; update businesses set name='Bypass' where id=${quote(createdClient.id)}`), /permission denied/);
+  assert.throws(() => saveSettings(manager, createdClient.id, { faqs: 'Not allowed' }), /Owner or manager access required/);
+  assert.throws(() => manageClient(manager, 'update', createdClient.id, { access_status: 'active', is_active: true }), /Platform operator/);
+  assert.throws(() => manageClient(operator, 'update', createdClient.id, { is_active: true }), /Restore client access/);
+  assert.equal(ingest('suspended-message', 'Hello', null, '123456789', '919777777777').accepted, false);
+  assert.equal(sql(`select count(*) from wa_messages where business_id=${quote(createdClient.id)}`), beforeCount);
+  assert.equal(manageClient(operator, 'update', createdClient.id, { access_status: 'active' }).is_active, false);
+});
+
+test('invites expire and cannot be accepted while service is suspended or roles are untrusted', () => {
+  const email = 'future@example.invalid';
+  const future = '00000000-0000-0000-0000-000000000099';
+  sql(`insert into auth.users(id,email,email_confirmed_at) values (${quote(future)},${quote(email)},null)`);
+  manageClient(operator, 'upsert_member', createdClient.id, { email, role: 'agent' });
+  sql(`update client_invitations set expires_at=now()-interval '1 second' where email=${quote(email)}; update auth.users set email_confirmed_at=now() where id=${quote(future)}`);
+  assert.equal(sql(`select crm_accept_client_invites(${quote(future)})`), '0');
+  manageClient(operator, 'update', createdClient.id, { access_status: 'suspended' });
+  manageClient(operator, 'upsert_member', createdClient.id, { email, role: 'agent' });
+  assert.equal(sql(`select crm_accept_client_invites(${quote(future)})`), '0');
+  manageClient(operator, 'update', createdClient.id, { access_status: 'active' });
+  assert.equal(sql(`select crm_accept_client_invites(${quote(future)})`), '1');
+  for (const role of ['anon', 'authenticated']) {
+    assert.throws(() => sql(`set role ${role}; select crm_accept_client_invites(${quote(future)})`), /permission denied/);
+    assert.throws(() => sql(`set role ${role}; select crm_set_client_invitation(${quote(operator)},${quote(createdClient.id)},${quote(email)})`), /permission denied/);
+  }
+});
+
 test('CRM migration seeds only the verified legacy catalog and preserves subsequent CRM edits', () => {
   const legacyBusiness = 'ad98f305-9a29-4bf9-9aa5-38782eeb16fb';
   sql(`insert into businesses(id,name,phone_number_id,settings) values (${quote(legacyBusiness)},'Amolik Group','1383698251495317','{"catalog_key":"amolik","owner_phone":"917250307422"}')`);
-  const migrate = () => execFileSync(path.join(bin, 'psql'), [...args, '-f', path.join(__dirname, '..', 'migrations/006_crm_client_control.sql')], { stdio: 'pipe' });
+  const migrate = () => {
+    for (const migration of ['006_crm_client_control.sql', '007_admin_multibusiness.sql']) execFileSync(path.join(bin, 'psql'), [...args, '-f', path.join(__dirname, '..', 'migrations', migration)], { stdio: 'pipe' });
+  };
   migrate();
   const seeded = json(`select settings->'catalog' from businesses where id=${quote(legacyBusiness)}`);
   assert.equal(seeded.projects.length, 16);

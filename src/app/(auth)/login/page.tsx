@@ -22,9 +22,17 @@ export default function LoginPage() {
     if (error) {
       toast.error(error.message)
     } else {
-      toast.success('Welcome back!')
-      router.push('/')
-      router.refresh()
+      try {
+        const response = await fetch('/api/auth/accept-invitations', { method: 'POST' })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || 'Unable to verify client access')
+        toast.success('Welcome back!')
+        router.push(result.destination)
+        router.refresh()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Unable to check access')
+        router.push('/access')
+      }
     }
     setLoading(false)
   }
@@ -120,7 +128,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-slate-600 mt-6">
-          New team member? <Link href="/signup" className="text-green-400">Create an account</Link>, then ask your operator for client access.
+          Approved by your administrator? <Link href="/signup" className="text-green-400">Activate your account</Link> using the approved email.
         </p>
       </div>
     </div>

@@ -124,7 +124,7 @@ function buildWorkflow() {
   link('Log Result', 'More Pending Messages?'); link('Human Handling - No Auto Reply', 'More Pending Messages?');
   link('More Pending Messages?', 'Next Turn Quiet Window'); link('More Pending Messages?', 'Loop Sessions', 1); link('Next Turn Quiet Window', 'Drain Session'); link('Drain Session', 'Aggregate & Check Winner');
   link('Retry or Review Batch', 'Loop Sessions');
-  return { name: 'WhatsApp AI Support & Lead Gen (Multi-Client)', nodes, connections, settings: { executionOrder: 'v1', timezone: 'Asia/Kolkata', executionTimeout: 180, saveExecutionProgress: false, saveDataErrorExecution: 'all', saveDataSuccessExecution: 'none' }, active: false, pinData: {}, meta: { requiredMigration: '006_crm_client_control.sql', catalogConfiguration: 'All client facts come from businesses.settings.catalog; no built-in catalog' } };
+  return { name: 'WhatsApp AI Support & Lead Gen (Multi-Client)', nodes, connections, settings: { executionOrder: 'v1', timezone: 'Asia/Kolkata', executionTimeout: 180, saveExecutionProgress: false, saveDataErrorExecution: 'all', saveDataSuccessExecution: 'none' }, active: false, pinData: {}, meta: { requiredMigration: '007_admin_multibusiness.sql', catalogConfiguration: 'Industry-aware client facts come from CRM settings; no built-in catalog' } };
 }
 
 module.exports = { buildWorkflow };

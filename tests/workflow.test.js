@@ -45,7 +45,7 @@ test('multi-item ingest and recoverable queue replace the sliding history window
 test('model sampling and publish defaults match the reviewed contract', () => {
   assert.equal(nodes.get('OpenAI Chat Model').parameters.options.temperature, 0.7);
   assert.equal(workflow.active, false);
-  assert.equal(workflow.meta.requiredMigration, '006_crm_client_control.sql');
+  assert.equal(workflow.meta.requiredMigration, '007_admin_multibusiness.sql');
   assert.doesNotMatch(JSON.stringify(workflow), /Amolik Heights|amolikCatalog|catalog_key ===/);
   assert.match(nodes.get('Build AI Context').parameters.jsCode, /style: data.style_profile/);
 });

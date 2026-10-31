@@ -40,10 +40,11 @@ const stageColor: Record<string, string> = {
   follow_up_required:  'badge-yellow',
 }
 
-export function LeadsClient({ initialLeads, businessIds, userId }: {
+export function LeadsClient({ initialLeads, businessIds, userId, realEstateBusinessIds = [] }: {
   initialLeads: Lead[]
   businessIds: string[]
   userId: string
+  realEstateBusinessIds?: string[]
 }) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [search, setSearch] = useState('')
@@ -243,10 +244,10 @@ export function LeadsClient({ initialLeads, businessIds, userId }: {
             <Field label="Budget" value={editing ? undefined : selected.budget} icon={<DollarSign className="w-3 h-3" />}>
               {editing && <input value={editData.budget ?? ''} onChange={e => setEditData(p => ({ ...p, budget: e.target.value }))} className="input text-xs mt-1" placeholder="Budget range…" />}
             </Field>
-            <Field label="Preferred BHK" value={editing ? undefined : selected.preferred_bhk}>
+            {realEstateBusinessIds.includes(selected.business_id ?? '') && <Field label="Preferred BHK" value={editing ? undefined : selected.preferred_bhk}>
               {editing && <input value={editData.preferred_bhk ?? ''} onChange={event => setEditData(previous => ({ ...previous, preferred_bhk: event.target.value }))} className="input text-xs mt-1" placeholder="e.g. 2 BHK" />}
-            </Field>
-            <Field label="Requested Visit Time" value={selected.preferred_appointment_time} />
+            </Field>}
+            <Field label="Requested Appointment Time" value={selected.preferred_appointment_time} />
             <Field label="Location" value={editing ? undefined : selected.location} icon={<MapPin className="w-3 h-3" />}>
               {editing && <input value={editData.location ?? ''} onChange={e => setEditData(p => ({ ...p, location: e.target.value }))} className="input text-xs mt-1" placeholder="Location…" />}
             </Field>
