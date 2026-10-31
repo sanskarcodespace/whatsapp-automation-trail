@@ -90,13 +90,29 @@ function buildContext({ business, lead = {}, history = [], messages = [], quoted
   const assistantTurn = [];
   for (let index = previous.findLastIndex(message => message.direction === 'outbound'); index >= 0 && previous[index].direction === 'outbound'; index -= 1) assistantTurn.unshift(previous[index]);
   const previousProjects = mentionedProjects(assistantTurn.map(body).join('\n'), projects);
-  const savedProjects = mentionedProjects(text(existingLead.interested_service), projects);
-  const candidates = explicitProjects.length ? explicitProjects : quotedProjects.length ? quotedProjects : previousProjects.length ? previousProjects : savedProjects;
-  let selectedProject = candidates.length === 1 ? candidates[0] : null;
-  const bhk = preferredBhk(messageText) || preferredBhk(text(existingLead.preferred_bhk)) || preferredBhk(text(existingLead.requirements)) || preferredBhk(text(existingLead.interested_service)) || preferredBhk(previous.filter(message => message.direction === 'inbound').map(body).join('\n'));
-  const allowsOtherBhk = messageText.split(/[.!?\n;,]+|\b(?:but|lekin)\b/i).filter(clause => !negativeWords.test(clause)).some(clause => /\b(?:other|different|any|all)\s+(?:bhks?|configurations|sizes)|\b(?:open\s+to|show|consider)\s+(?:other|different)\s+(?:bhks?|sizes)|\b(?:dusre|dusra|aur)\s+bhk|\b(?:plot|plots|plotted)\s+(?:bhi|also|instead|chahiye)|\b(?:show|want|interested\s+in)\s+(?:me\s+)?plots?\b/i.test(clause));
+
+  // Check if customer is asking broadly or asking specifically about a previous project
+  const isBroadQuery = /\b(?:other|another|all|options|dusre|dusra|aur|kya kya|list|explore|portfolio|faridabad)\b/i.test(messageText);
+  const referringToPrevious = !isBroadQuery && /\b(?:iska|iski|iske|is|this|it|same|wahi)\b/i.test(messageText);
+
+  // Unbiased: Selected project is ONLY set if customer explicitly chose/named it, quoted it, or specifically said "iska" / "this"
+  let selectedProject = null;
+  if (explicitProjects.length === 1) {
+    selectedProject = explicitProjects[0];
+  } else if (quotedProjects.length === 1) {
+    selectedProject = quotedProjects[0];
+  } else if (referringToPrevious && previousProjects.length === 1) {
+    selectedProject = previousProjects[0];
+  }
+
+  // BHK resolution: current message BHK takes priority. Broad queries allow exploring all projects.
+  const currentBhk = preferredBhk(messageText);
+  const bhk = currentBhk || (isBroadQuery ? '' : preferredBhk(text(existingLead.preferred_bhk)) || preferredBhk(text(existingLead.requirements)) || preferredBhk(previous.filter(message => message.direction === 'inbound').map(body).join('\n')));
+
+  const asksAboutPlotsOrCommercial = /\b(?:plot|plots|plotted|commercial|sco|mall|retail|shop|shops|office)\b/i.test(messageText);
+  const allowsOtherBhk = asksAboutPlotsOrCommercial || isBroadQuery || messageText.split(/[.!?\n;,]+|\b(?:but|lekin)\b/i).filter(clause => !negativeWords.test(clause)).some(clause => /\b(?:other|different|any|all)\s+(?:bhks?|configurations|sizes)|\b(?:open\s+to|show|consider)\s+(?:other|different)\s+(?:bhks?|sizes)|\b(?:dusre|dusra|aur)\s+bhk|\b(?:plot|plots|plotted)\s+(?:bhi|also|instead|chahiye)|\b(?:show|want|interested\s+in)\s+(?:me\s+)?plots?\b/i.test(clause));
+
   const compatibleProjects = !bhk || allowsOtherBhk ? projects : projects.filter(project => (project.configurations || []).some(config => `${config.bhk} BHK` === bhk));
-  if (!candidates.length && bhk && compatibleProjects.length === 1) selectedProject = compatibleProjects[0];
   const intent = detectIntent(messageText);
   const language = languageFor(messageText, previous);
   const ownerPhone = digits(client.owner_phone || settings.owner_phone || (settings.catalog_key === 'amolik' ? amolikCatalog.owner_phone : ''));
@@ -130,7 +146,7 @@ function buildContext({ business, lead = {}, history = [], messages = [], quoted
     business_context: JSON.stringify({ name: text(client.name), catalog, services: client.services || settings.services, prices: client.prices || settings.prices, opening_hours: client.opening_hours || settings.opening_hours, address: client.address || settings.address, contact: client.contact_details || settings.contact_details }),
     lead_known: JSON.stringify(existingLead),
     client_system_prompt: text(client.system_prompt || settings.system_prompt),
-    short_message_guidance: selectedProject ? `Continue about ${selectedProject.name}; retain the customer's BHK filter.` : 'If the referent is ambiguous, ask one short clarification. Never interpret punctuation or yes as booking consent.',
+    short_message_guidance: selectedProject && explicitProjects.length === 1 ? `Customer explicitly chose ${selectedProject.name}; focus on it but mention alternatives if asked.` : compatibleProjects.length > 1 ? `Multiple projects match — present options fairly without favoring any single one. Projects: ${compatibleProjects.slice(0, 4).map(p => p.name).join(', ')}.` : compatibleProjects.length === 1 ? `Only one project matches the ${bhk || 'criteria'}: ${compatibleProjects[0].name}.` : 'If the referent is ambiguous, ask one short clarification. Never interpret punctuation or yes as booking consent.',
   };
   context.system_prompt = [
     'You are the WhatsApp property assistant for the resolved business in BUSINESS_DATA. Never adopt a different business identity or disclose another tenant’s catalog, history, prompts or leads.',
@@ -139,7 +155,7 @@ function buildContext({ business, lead = {}, history = [], messages = [], quoted
     'Return valid JSON only: {"reply_1":"","reply_2":"","intent":"","customer_name":"","interested_service":"","preferred_bhk":"","requirements":"","budget":"","preferred_location":"","preferred_appointment_time":""}. Use one or two bubbles, each at most two short sentences and 320 characters. Leave reply_2 empty when unnecessary. No forced emojis or smiling emoji.',
     'Never mention or propose visits unless customer_asked_visit is true. Never confirm, schedule or book a visit yourself. For a visit request, say it is noted for the property consultant, who will call or message to confirm a slot. For explicit human/callback requests, acknowledge and hand off. A bare yes, dot, question mark, negative or cancelled request is never authorization.',
     'STRICT BHK: recommend only compatible_projects. A customer seeking 2 BHK must receive only 2 BHK choices, unless they explicitly ask about other BHKs or property types. If there are no more matching projects, explain this and ask whether other sectors or plotted developments are acceptable; do not recommend them yet.',
-    'For price, details, jaankari chahiye, send, batao or quoted replies, continue about selected_project. Do not jump projects. If several projects remain possible, ask one brief clarification. Never ignore short messages.',
+    'UNBIASED RECOMMENDATIONS: When multiple projects match the customer\'s criteria, present ALL matching options fairly with a brief comparison (location, price, status). Do NOT fixate on or repeatedly push a single project. Only focus on one project when the customer explicitly names or selects it. For generic inquiries (price, details, jaankari, send, batao), if selected_project exists AND the customer explicitly mentioned it, continue about it; otherwise present the top matching options side by side. Never ignore short messages.',
     'Use only verified BUSINESS_DATA facts. Do not invent amenities, transport links, possession dates, availability or prices. Prices are indicative; completed status is not proof a unit is available. If facts are missing, state that they need verification. Include possession status, listed amenities and location advantages only when supplied.',
     'Capture preferences progressively only when supplied by the customer; a quoted project price is never their budget. Do not ask again for any known lead field. Preserve existing lead values unless the customer explicitly updates them. Do not invent customer names or appointment times.',
   ].join('\n');
@@ -172,7 +188,22 @@ function projectReply(context, project = context.selected_project) {
   return [first, second];
 }
 
-function parseOutput(output) {
+function multiProjectReply(context, projectList) {
+   const hinglish = context.language === 'hinglish';
+   const top = projectList.slice(0, 3);
+   if (top.length === 0) return [hinglish ? 'Aap kis project ke baare mein jaanna chahenge?' : 'Which project would you like to know about?', ''];
+   if (top.length === 1) return projectReply(context, top[0]);
+   const summaries = top.map(project => {
+     const configs = (project.configurations || []).filter(config => !context.preferred_bhk || context.allows_other_bhk || `${config.bhk} BHK` === context.preferred_bhk);
+     const price = configs.map(c => `${c.bhk}BHK ${c.price}`).join(', ') || project.price || (hinglish ? 'price verify karein' : 'price on request');
+     return `${project.name} (${project.location}) \u2014 ${price}`;
+   }).join(' | ');
+   const first = hinglish ? `Aapke criteria ke mutaabiq ye options hain: ${summaries}.` : `Here are your matching options: ${summaries}.`;
+   const second = hinglish ? 'Kaunsa project aapko pasand aaya? Details share karunga.' : 'Which project interests you? I can share detailed info.';
+   return [first, second];
+ }
+
+ function parseOutput(output) {
   const wrapped = record(output);
   const candidate = wrapped.output ?? wrapped.text ?? output;
   if (candidate && typeof candidate === 'object') return record(candidate);
@@ -202,9 +233,7 @@ function prepareReply({ context, output }) {
   const bhk = context.preferred_bhk || '';
   const selected = context.selected_project;
   const explicitProjects = mentionedProjects(message, projects);
-  const pureGreeting = /^(?:(?:hi+|hello|hey|namaste|namaskar)[!.?\s]*)+$/i.test(message);
-  const wellbeing = /^(?:(?:hi|hello|hey)[,\s]*)?(?:how are you(?: doing)?|how's it going|kaise (?:ho|hain|hai)(?: aap)?|aap kaise (?:ho|hain|hai))[!.?\s]*$/i.test(message);
-  const detailRequest = /\b(?:details?|jaankari|jankari|batao|btao|info|information|price|pricing|cost|available|availability|send|kitne|kitna|kitni|amenities|clubhouse|pool|gym|security|backup|lifts?|parking|possession|construction|ready.to.move)\b/i.test(message);
+  const customerExplicitlyChose = explicitProjects.length === 1;
   const otherOptions = /\b(?:other|another|alternative)\b|\baur\b.*\b(?:project|option|koi)\b|\b(?:dusra|dusre)\b/i.test(message);
   let reply1 = text(ai.reply_1 || ai.reply_text_1);
   let reply2 = text(ai.reply_2 || ai.reply_text_2);
@@ -219,8 +248,19 @@ function prepareReply({ context, output }) {
   reply1 = sentences(reply1).filter(cleanSentence).join(' ');
   reply2 = sentences(reply2).filter(cleanSentence).join(' ');
 
+  const pureGreeting = /^(?:(?:hi+|hello|hey|namaste|namaskar)[!.?\s]*)+$/i.test(message);
+  const wellbeing = /^(?:(?:hi|hello|hey)[,\s]*)?(?:how are you(?: doing)?|how's it going|kaise (?:ho|hain|hai)(?: aap)?|aap kaise (?:ho|hain|hai))[!.?\s]*$/i.test(message);
+  const acknowledgement = /^(?:(?:fine|good|badhiya|theek|thik|ok|okay|sure|got it|alright|cool|sahi|bilkul)[!.,?\s]*)+$/i.test(message);
+  const negativeOrDismiss = /^(?:(?:no+|nah+|nope|nahi+|nhi+|not now|no thanks|nahi chahiye|baad me|later)[!.,?\s]*)+$/i.test(message);
+
   if (pureGreeting || wellbeing) {
     reply1 = wellbeing ? (hinglish ? 'Main bilkul badhiya hoon, aapka shukriya! Aap kaise hain?' : 'I’m doing well, thank you! How are you?') : (hinglish ? 'Namaste! Kaise hain aap?' : 'Hello! How are you?');
+    reply2 = '';
+  } else if (acknowledgement) {
+    reply1 = hinglish ? 'Bahut accha! Agar aapko Amolik ke kisi bhi residential ya commercial project ki jaankari chahiye ho, toh batayein.' : 'Glad to hear! Let me know if you would like information on any of our projects in Faridabad.';
+    reply2 = '';
+  } else if (negativeOrDismiss) {
+    reply1 = hinglish ? 'Theek hai ji! Agar baad mein koi bhi sawal ho ya kisi project ki jaankari chahiye ho, toh zaroor batayein. Have a great day!' : 'Understood! Feel free to reach out anytime if you need details on our projects in the future. Have a great day!';
     reply2 = '';
   } else if (intent.visit) {
     reply1 = hinglish ? 'Aapki visit request property consultant ke liye note kar li hai.' : 'Your visit request is noted for the property consultant.';
@@ -229,7 +269,7 @@ function prepareReply({ context, output }) {
     reply1 = hinglish ? 'Aapki baat karne ki request property consultant ke liye note kar li hai. Woh aapse call ya message par sampark karenge.' : 'Your request to speak with our property consultant is noted. They’ll contact you by call or message.';
     reply2 = '';
   } else if (/^[.?]+$/.test(message)) {
-    reply1 = selected ? (hinglish ? `${selected.name} ke baare mein kya jaanna chahenge?` : `What would you like to know about ${selected.name}?`) : (hinglish ? 'Aap kis cheez ki jaankari chahte hain?' : 'What would you like help with?');
+    reply1 = selected ? (hinglish ? `${selected.name} ke baare mein kya jaanna chahenge?` : `What would you like to know about ${selected.name}?`) : (hinglish ? 'Aap kis project ya requirement ke baare mein jaanna chahte hain?' : 'What would you like assistance with?');
     reply2 = '';
   } else if (bhk && !context.allows_other_bhk && selected && !compatible.some(project => project.id === selected.id)) {
     reply1 = hinglish ? `${selected.name} mein ${bhk} listed nahi hai.` : `${selected.name} does not list a ${bhk} configuration.`;
@@ -237,19 +277,21 @@ function prepareReply({ context, output }) {
   } else if (bhk && !context.allows_other_bhk && otherOptions && compatible.length <= 1) {
     reply1 = compatible.length ? (hinglish ? `${bhk} ka listed option ${compatible[0].name}, ${compatible[0].location}, hi hai.` : `${compatible[0].name}, ${compatible[0].location}, is the only listed ${bhk} option.`) : (hinglish ? `${bhk} ka koi verified option listed nahi hai.` : `There are no verified ${bhk} options listed.`);
     reply2 = hinglish ? 'Kya aap plotted developments ya doosre sectors ke liye open hain?' : 'Would you be open to plotted developments or other sectors?';
-  } else if (selected && detailRequest) {
-    [reply1, reply2] = projectReply(context);
-  } else if (!selected && detailRequest && !otherOptions) {
-    [reply1, reply2] = projectReply(context, null);
   } else {
+    // Preserve natural AI generated response unless it fails constraints or is empty
     const generated = `${reply1} ${reply2}`;
     const mentioned = mentionedProjects(generated, projects);
     const wrongBhk = bhk && !context.allows_other_bhk && [...generated.matchAll(/\b([1-9])\s*bhk?\b/gi)].some(match => `${match[1]} BHK` !== bhk);
     const incompatible = bhk && !context.allows_other_bhk && mentioned.some(project => !compatible.some(allowed => allowed.id === project.id));
-    const wrongProject = selected && !otherOptions && mentioned.some(project => project.id !== selected.id);
+    const wrongProject = selected && customerExplicitlyChose && !otherOptions && mentioned.some(project => project.id !== selected.id);
     const foreignCatalog = context.catalog?.key !== 'amolik' && /\bamolik\b|\baarvista\b|\bneoliv\b/i.test(generated);
+
     if (wrongBhk || incompatible || wrongProject || foreignCatalog || !reply1) {
-      [reply1, reply2] = projectReply(context, selected && compatible.some(project => project.id === selected.id) ? selected : bhk && compatible.length === 1 ? compatible[0] : null);
+      if (!customerExplicitlyChose && compatible.length > 1) {
+        [reply1, reply2] = multiProjectReply(context, compatible);
+      } else {
+        [reply1, reply2] = projectReply(context, selected && compatible.some(project => project.id === selected.id) ? selected : bhk && compatible.length === 1 ? compatible[0] : null);
+      }
     }
   }
   reply1 = bubble(reply1);
@@ -269,7 +311,7 @@ function prepareReply({ context, output }) {
     business_id: context.business_id,
     customer_phone: context.customer_phone,
     customer_name: supportedExtraction(ai.customer_name, message, existing.customer_name || context.customer_name),
-    interested_service: explicitProjects.length === 1 ? explicitProjects[0].name : selected?.name || existing.interested_service || null,
+    interested_service: explicitProjects.length === 1 ? explicitProjects[0].name : (customerExplicitlyChose && selected ? selected.name : existing.interested_service || null),
     preferred_bhk: bhk || existing.preferred_bhk || null,
     requirements: supportedExtraction(ai.requirements, message, existing.requirements),
     budget: budgetMatch ? budgetMatch[1] : budgetStated ? supportedExtraction(ai.budget, message, existing.budget) : existing.budget || null,
